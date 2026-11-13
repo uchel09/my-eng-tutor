@@ -202,10 +202,14 @@ class _ActiveQuizBody extends StatelessWidget {
                         ),
                       ),
                       Obx(() {
-                        final speaking =
-                            controller.ttsService.isSpeaking.value &&
-                                controller.ttsService.activeText.value ==
-                                    question.word.trim();
+                        final target = question.word.trim();
+                        final isTarget = target.isNotEmpty &&
+                            controller.ttsService.activeText.value == target;
+                        final loading = isTarget &&
+                            controller.ttsService.isLoadingAudio.value;
+                        final speaking = isTarget &&
+                            !loading &&
+                            controller.ttsService.isSpeaking.value;
                         return OutlinedButton.icon(
                           onPressed: controller.speakWord,
                           style: OutlinedButton.styleFrom(
@@ -216,13 +220,22 @@ class _ActiveQuizBody extends StatelessWidget {
                             minimumSize: const Size(0, 34),
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
-                          icon: Icon(
-                            speaking
-                                ? Icons.graphic_eq_rounded
-                                : Icons.volume_up_rounded,
-                            size: 18,
-                            color: speaking ? colorScheme.primary : null,
-                          ),
+                          icon: loading
+                              ? SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: colorScheme.primary,
+                                  ),
+                                )
+                              : Icon(
+                                  speaking
+                                      ? Icons.graphic_eq_rounded
+                                      : Icons.volume_up_rounded,
+                                  size: 18,
+                                  color: speaking ? colorScheme.primary : null,
+                                ),
                           label: const Text('Dengar Kata'),
                         );
                       }),
@@ -607,22 +620,36 @@ class _QuizResultView extends StatelessWidget {
                             ),
                           ),
                           Obx(() {
-                            final speaking =
-                                controller.ttsService.isSpeaking.value &&
-                                    controller.ttsService.activeText.value ==
-                                        question.word.trim();
+                            final target = question.word.trim();
+                            final isTarget = target.isNotEmpty &&
+                                controller.ttsService.activeText.value ==
+                                    target;
+                            final loading = isTarget &&
+                                controller.ttsService.isLoadingAudio.value;
+                            final speaking = isTarget &&
+                                !loading &&
+                                controller.ttsService.isSpeaking.value;
                             return IconButton(
                               tooltip: 'Dengarkan kata',
                               onPressed: () =>
                                   controller.speakText(question.word),
-                              icon: Icon(
-                                speaking
-                                    ? Icons.graphic_eq_rounded
-                                    : Icons.volume_up_outlined,
-                                color: speaking
-                                    ? colorScheme.primary
-                                    : colorScheme.onSurfaceVariant,
-                              ),
+                              icon: loading
+                                  ? SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: colorScheme.primary,
+                                      ),
+                                    )
+                                  : Icon(
+                                      speaking
+                                          ? Icons.graphic_eq_rounded
+                                          : Icons.volume_up_outlined,
+                                      color: speaking
+                                          ? colorScheme.primary
+                                          : colorScheme.onSurfaceVariant,
+                                    ),
                             );
                           }),
                         ],

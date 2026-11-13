@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../data/services/tts_service.dart';
+
 /// Displays a consistent Material 3 snackbar when an overlay context exists.
 void showFlashcardSnackbar({
   required String title,
@@ -430,5 +432,89 @@ class _FlashcardAddWordDialogState extends State<_FlashcardAddWordDialog> {
         ),
       ],
     );
+  }
+}
+
+/// Compact reactive pill indicating the active or most recent [TtsService] voice source.
+class FlashcardVoiceSourceChip extends StatelessWidget {
+  const FlashcardVoiceSourceChip({
+    super.key,
+    required this.ttsService,
+  });
+
+  final TtsService ttsService;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Obx(() {
+      final isLoading = ttsService.isLoadingAudio.value;
+      final source = ttsService.activeVoiceSource.value;
+
+      if (!isLoading && source.isEmpty) {
+        return const SizedBox.shrink();
+      }
+
+      final String label;
+      final IconData? iconData;
+      final Color fgColor;
+      final Color bgColor;
+
+      if (isLoading) {
+        label = 'Memuat suara AI...';
+        iconData = null;
+        fgColor = colorScheme.primary;
+        bgColor = colorScheme.primaryContainer.withValues(alpha: 0.45);
+      } else if (source == 'ai') {
+        label = 'Suara AI';
+        iconData = Icons.auto_awesome_rounded;
+        fgColor = colorScheme.primary;
+        bgColor = colorScheme.primaryContainer.withValues(alpha: 0.55);
+      } else if (source == 'cache') {
+        label = 'Suara AI (Cache)';
+        iconData = Icons.bolt_rounded;
+        fgColor = colorScheme.secondary;
+        bgColor = colorScheme.secondaryContainer.withValues(alpha: 0.7);
+      } else {
+        label = 'Suara Offline (TTS)';
+        iconData = Icons.record_voice_over_outlined;
+        fgColor = colorScheme.onSurfaceVariant;
+        bgColor = colorScheme.surfaceContainerHighest.withValues(alpha: 0.8);
+      }
+
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isLoading)
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: fgColor,
+                ),
+              )
+            else
+              Icon(iconData, size: 14, color: fgColor),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: fgColor,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+    });
   }
 }

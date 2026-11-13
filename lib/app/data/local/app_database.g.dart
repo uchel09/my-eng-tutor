@@ -3034,6 +3034,31 @@ class $AppSettingsTable extends AppSettings
     requiredDuringInsert: false,
     defaultValue: const Constant('gemini-2.5-flash'),
   );
+  static const VerificationMeta _flashcardModelMeta = const VerificationMeta(
+    'flashcardModel',
+  );
+  @override
+  late final GeneratedColumn<String> flashcardModel = GeneratedColumn<String>(
+    'flashcard_model',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('gemini-3.8-flash'),
+  );
+  static const VerificationMeta _flashcardTtsModelMeta = const VerificationMeta(
+    'flashcardTtsModel',
+  );
+  @override
+  late final GeneratedColumn<String> flashcardTtsModel =
+      GeneratedColumn<String>(
+        'flashcard_tts_model',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('gemini-2.5-flash-preview-tts'),
+      );
   static const VerificationMeta _bilingualBeginnerSupportMeta =
       const VerificationMeta('bilingualBeginnerSupport');
   @override
@@ -3109,6 +3134,8 @@ class $AppSettingsTable extends AppSettings
     apiKey,
     liveModel,
     scoringModel,
+    flashcardModel,
+    flashcardTtsModel,
     bilingualBeginnerSupport,
     darkMode,
     unlockAllOverride,
@@ -3148,6 +3175,24 @@ class $AppSettingsTable extends AppSettings
         scoringModel.isAcceptableOrUnknown(
           data['scoring_model']!,
           _scoringModelMeta,
+        ),
+      );
+    }
+    if (data.containsKey('flashcard_model')) {
+      context.handle(
+        _flashcardModelMeta,
+        flashcardModel.isAcceptableOrUnknown(
+          data['flashcard_model']!,
+          _flashcardModelMeta,
+        ),
+      );
+    }
+    if (data.containsKey('flashcard_tts_model')) {
+      context.handle(
+        _flashcardTtsModelMeta,
+        flashcardTtsModel.isAcceptableOrUnknown(
+          data['flashcard_tts_model']!,
+          _flashcardTtsModelMeta,
         ),
       );
     }
@@ -3218,6 +3263,14 @@ class $AppSettingsTable extends AppSettings
         DriftSqlType.string,
         data['${effectivePrefix}scoring_model'],
       )!,
+      flashcardModel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}flashcard_model'],
+      )!,
+      flashcardTtsModel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}flashcard_tts_model'],
+      )!,
       bilingualBeginnerSupport: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}bilingual_beginner_support'],
@@ -3252,6 +3305,8 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
   final String apiKey;
   final String liveModel;
   final String scoringModel;
+  final String flashcardModel;
+  final String flashcardTtsModel;
   final bool bilingualBeginnerSupport;
   final bool darkMode;
   final bool unlockAllOverride;
@@ -3262,6 +3317,8 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
     required this.apiKey,
     required this.liveModel,
     required this.scoringModel,
+    required this.flashcardModel,
+    required this.flashcardTtsModel,
     required this.bilingualBeginnerSupport,
     required this.darkMode,
     required this.unlockAllOverride,
@@ -3275,6 +3332,8 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
     map['api_key'] = Variable<String>(apiKey);
     map['live_model'] = Variable<String>(liveModel);
     map['scoring_model'] = Variable<String>(scoringModel);
+    map['flashcard_model'] = Variable<String>(flashcardModel);
+    map['flashcard_tts_model'] = Variable<String>(flashcardTtsModel);
     map['bilingual_beginner_support'] = Variable<bool>(
       bilingualBeginnerSupport,
     );
@@ -3293,6 +3352,8 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
       apiKey: Value(apiKey),
       liveModel: Value(liveModel),
       scoringModel: Value(scoringModel),
+      flashcardModel: Value(flashcardModel),
+      flashcardTtsModel: Value(flashcardTtsModel),
       bilingualBeginnerSupport: Value(bilingualBeginnerSupport),
       darkMode: Value(darkMode),
       unlockAllOverride: Value(unlockAllOverride),
@@ -3313,6 +3374,8 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
       apiKey: serializer.fromJson<String>(json['apiKey']),
       liveModel: serializer.fromJson<String>(json['liveModel']),
       scoringModel: serializer.fromJson<String>(json['scoringModel']),
+      flashcardModel: serializer.fromJson<String>(json['flashcardModel']),
+      flashcardTtsModel: serializer.fromJson<String>(json['flashcardTtsModel']),
       bilingualBeginnerSupport: serializer.fromJson<bool>(
         json['bilingualBeginnerSupport'],
       ),
@@ -3332,6 +3395,8 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
       'apiKey': serializer.toJson<String>(apiKey),
       'liveModel': serializer.toJson<String>(liveModel),
       'scoringModel': serializer.toJson<String>(scoringModel),
+      'flashcardModel': serializer.toJson<String>(flashcardModel),
+      'flashcardTtsModel': serializer.toJson<String>(flashcardTtsModel),
       'bilingualBeginnerSupport': serializer.toJson<bool>(
         bilingualBeginnerSupport,
       ),
@@ -3347,6 +3412,8 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
     String? apiKey,
     String? liveModel,
     String? scoringModel,
+    String? flashcardModel,
+    String? flashcardTtsModel,
     bool? bilingualBeginnerSupport,
     bool? darkMode,
     bool? unlockAllOverride,
@@ -3357,6 +3424,8 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
     apiKey: apiKey ?? this.apiKey,
     liveModel: liveModel ?? this.liveModel,
     scoringModel: scoringModel ?? this.scoringModel,
+    flashcardModel: flashcardModel ?? this.flashcardModel,
+    flashcardTtsModel: flashcardTtsModel ?? this.flashcardTtsModel,
     bilingualBeginnerSupport:
         bilingualBeginnerSupport ?? this.bilingualBeginnerSupport,
     darkMode: darkMode ?? this.darkMode,
@@ -3374,6 +3443,12 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
       scoringModel: data.scoringModel.present
           ? data.scoringModel.value
           : this.scoringModel,
+      flashcardModel: data.flashcardModel.present
+          ? data.flashcardModel.value
+          : this.flashcardModel,
+      flashcardTtsModel: data.flashcardTtsModel.present
+          ? data.flashcardTtsModel.value
+          : this.flashcardTtsModel,
       bilingualBeginnerSupport: data.bilingualBeginnerSupport.present
           ? data.bilingualBeginnerSupport.value
           : this.bilingualBeginnerSupport,
@@ -3397,6 +3472,8 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
           ..write('apiKey: $apiKey, ')
           ..write('liveModel: $liveModel, ')
           ..write('scoringModel: $scoringModel, ')
+          ..write('flashcardModel: $flashcardModel, ')
+          ..write('flashcardTtsModel: $flashcardTtsModel, ')
           ..write('bilingualBeginnerSupport: $bilingualBeginnerSupport, ')
           ..write('darkMode: $darkMode, ')
           ..write('unlockAllOverride: $unlockAllOverride, ')
@@ -3412,6 +3489,8 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
     apiKey,
     liveModel,
     scoringModel,
+    flashcardModel,
+    flashcardTtsModel,
     bilingualBeginnerSupport,
     darkMode,
     unlockAllOverride,
@@ -3426,6 +3505,8 @@ class AppSetting extends DataClass implements Insertable<AppSetting> {
           other.apiKey == this.apiKey &&
           other.liveModel == this.liveModel &&
           other.scoringModel == this.scoringModel &&
+          other.flashcardModel == this.flashcardModel &&
+          other.flashcardTtsModel == this.flashcardTtsModel &&
           other.bilingualBeginnerSupport == this.bilingualBeginnerSupport &&
           other.darkMode == this.darkMode &&
           other.unlockAllOverride == this.unlockAllOverride &&
@@ -3438,6 +3519,8 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
   final Value<String> apiKey;
   final Value<String> liveModel;
   final Value<String> scoringModel;
+  final Value<String> flashcardModel;
+  final Value<String> flashcardTtsModel;
   final Value<bool> bilingualBeginnerSupport;
   final Value<bool> darkMode;
   final Value<bool> unlockAllOverride;
@@ -3448,6 +3531,8 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
     this.apiKey = const Value.absent(),
     this.liveModel = const Value.absent(),
     this.scoringModel = const Value.absent(),
+    this.flashcardModel = const Value.absent(),
+    this.flashcardTtsModel = const Value.absent(),
     this.bilingualBeginnerSupport = const Value.absent(),
     this.darkMode = const Value.absent(),
     this.unlockAllOverride = const Value.absent(),
@@ -3459,6 +3544,8 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
     this.apiKey = const Value.absent(),
     this.liveModel = const Value.absent(),
     this.scoringModel = const Value.absent(),
+    this.flashcardModel = const Value.absent(),
+    this.flashcardTtsModel = const Value.absent(),
     this.bilingualBeginnerSupport = const Value.absent(),
     this.darkMode = const Value.absent(),
     this.unlockAllOverride = const Value.absent(),
@@ -3470,6 +3557,8 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
     Expression<String>? apiKey,
     Expression<String>? liveModel,
     Expression<String>? scoringModel,
+    Expression<String>? flashcardModel,
+    Expression<String>? flashcardTtsModel,
     Expression<bool>? bilingualBeginnerSupport,
     Expression<bool>? darkMode,
     Expression<bool>? unlockAllOverride,
@@ -3481,6 +3570,8 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
       if (apiKey != null) 'api_key': apiKey,
       if (liveModel != null) 'live_model': liveModel,
       if (scoringModel != null) 'scoring_model': scoringModel,
+      if (flashcardModel != null) 'flashcard_model': flashcardModel,
+      if (flashcardTtsModel != null) 'flashcard_tts_model': flashcardTtsModel,
       if (bilingualBeginnerSupport != null)
         'bilingual_beginner_support': bilingualBeginnerSupport,
       if (darkMode != null) 'dark_mode': darkMode,
@@ -3495,6 +3586,8 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
     Value<String>? apiKey,
     Value<String>? liveModel,
     Value<String>? scoringModel,
+    Value<String>? flashcardModel,
+    Value<String>? flashcardTtsModel,
     Value<bool>? bilingualBeginnerSupport,
     Value<bool>? darkMode,
     Value<bool>? unlockAllOverride,
@@ -3506,6 +3599,8 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
       apiKey: apiKey ?? this.apiKey,
       liveModel: liveModel ?? this.liveModel,
       scoringModel: scoringModel ?? this.scoringModel,
+      flashcardModel: flashcardModel ?? this.flashcardModel,
+      flashcardTtsModel: flashcardTtsModel ?? this.flashcardTtsModel,
       bilingualBeginnerSupport:
           bilingualBeginnerSupport ?? this.bilingualBeginnerSupport,
       darkMode: darkMode ?? this.darkMode,
@@ -3529,6 +3624,12 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
     }
     if (scoringModel.present) {
       map['scoring_model'] = Variable<String>(scoringModel.value);
+    }
+    if (flashcardModel.present) {
+      map['flashcard_model'] = Variable<String>(flashcardModel.value);
+    }
+    if (flashcardTtsModel.present) {
+      map['flashcard_tts_model'] = Variable<String>(flashcardTtsModel.value);
     }
     if (bilingualBeginnerSupport.present) {
       map['bilingual_beginner_support'] = Variable<bool>(
@@ -3557,6 +3658,8 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
           ..write('apiKey: $apiKey, ')
           ..write('liveModel: $liveModel, ')
           ..write('scoringModel: $scoringModel, ')
+          ..write('flashcardModel: $flashcardModel, ')
+          ..write('flashcardTtsModel: $flashcardTtsModel, ')
           ..write('bilingualBeginnerSupport: $bilingualBeginnerSupport, ')
           ..write('darkMode: $darkMode, ')
           ..write('unlockAllOverride: $unlockAllOverride, ')
@@ -7448,6 +7551,8 @@ typedef $$AppSettingsTableCreateCompanionBuilder =
       Value<String> apiKey,
       Value<String> liveModel,
       Value<String> scoringModel,
+      Value<String> flashcardModel,
+      Value<String> flashcardTtsModel,
       Value<bool> bilingualBeginnerSupport,
       Value<bool> darkMode,
       Value<bool> unlockAllOverride,
@@ -7460,6 +7565,8 @@ typedef $$AppSettingsTableUpdateCompanionBuilder =
       Value<String> apiKey,
       Value<String> liveModel,
       Value<String> scoringModel,
+      Value<String> flashcardModel,
+      Value<String> flashcardTtsModel,
       Value<bool> bilingualBeginnerSupport,
       Value<bool> darkMode,
       Value<bool> unlockAllOverride,
@@ -7493,6 +7600,16 @@ class $$AppSettingsTableFilterComposer
 
   ColumnFilters<String> get scoringModel => $composableBuilder(
     column: $table.scoringModel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get flashcardModel => $composableBuilder(
+    column: $table.flashcardModel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get flashcardTtsModel => $composableBuilder(
+    column: $table.flashcardTtsModel,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7551,6 +7668,16 @@ class $$AppSettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get flashcardModel => $composableBuilder(
+    column: $table.flashcardModel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get flashcardTtsModel => $composableBuilder(
+    column: $table.flashcardTtsModel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get bilingualBeginnerSupport => $composableBuilder(
     column: $table.bilingualBeginnerSupport,
     builder: (column) => ColumnOrderings(column),
@@ -7597,6 +7724,16 @@ class $$AppSettingsTableAnnotationComposer
 
   GeneratedColumn<String> get scoringModel => $composableBuilder(
     column: $table.scoringModel,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get flashcardModel => $composableBuilder(
+    column: $table.flashcardModel,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get flashcardTtsModel => $composableBuilder(
+    column: $table.flashcardTtsModel,
     builder: (column) => column,
   );
 
@@ -7659,6 +7796,8 @@ class $$AppSettingsTableTableManager
                 Value<String> apiKey = const Value.absent(),
                 Value<String> liveModel = const Value.absent(),
                 Value<String> scoringModel = const Value.absent(),
+                Value<String> flashcardModel = const Value.absent(),
+                Value<String> flashcardTtsModel = const Value.absent(),
                 Value<bool> bilingualBeginnerSupport = const Value.absent(),
                 Value<bool> darkMode = const Value.absent(),
                 Value<bool> unlockAllOverride = const Value.absent(),
@@ -7669,6 +7808,8 @@ class $$AppSettingsTableTableManager
                 apiKey: apiKey,
                 liveModel: liveModel,
                 scoringModel: scoringModel,
+                flashcardModel: flashcardModel,
+                flashcardTtsModel: flashcardTtsModel,
                 bilingualBeginnerSupport: bilingualBeginnerSupport,
                 darkMode: darkMode,
                 unlockAllOverride: unlockAllOverride,
@@ -7681,6 +7822,8 @@ class $$AppSettingsTableTableManager
                 Value<String> apiKey = const Value.absent(),
                 Value<String> liveModel = const Value.absent(),
                 Value<String> scoringModel = const Value.absent(),
+                Value<String> flashcardModel = const Value.absent(),
+                Value<String> flashcardTtsModel = const Value.absent(),
                 Value<bool> bilingualBeginnerSupport = const Value.absent(),
                 Value<bool> darkMode = const Value.absent(),
                 Value<bool> unlockAllOverride = const Value.absent(),
@@ -7691,6 +7834,8 @@ class $$AppSettingsTableTableManager
                 apiKey: apiKey,
                 liveModel: liveModel,
                 scoringModel: scoringModel,
+                flashcardModel: flashcardModel,
+                flashcardTtsModel: flashcardTtsModel,
                 bilingualBeginnerSupport: bilingualBeginnerSupport,
                 darkMode: darkMode,
                 unlockAllOverride: unlockAllOverride,

@@ -408,9 +408,12 @@ class TutorRepository {
     List<String> avoidSentences = const [],
   }) async {
     final settings = await getSettings();
+    final effectiveFlashcardModel = settings.flashcardModel.trim().isNotEmpty
+        ? settings.flashcardModel
+        : settings.scoringModel;
     return _restProvider.generateFlashcardPracticeContent(
       apiKey: settings.apiKey,
-      model: settings.scoringModel,
+      model: effectiveFlashcardModel,
       word: word,
       currentMeaningId: currentMeaningId,
       wordTypeHint: wordTypeHint,
@@ -425,9 +428,12 @@ class TutorRepository {
     int maxQuestions = 15,
   }) async {
     final settings = await getSettings();
+    final effectiveFlashcardModel = settings.flashcardModel.trim().isNotEmpty
+        ? settings.flashcardModel
+        : settings.scoringModel;
     return _restProvider.generateFlashcardQuiz(
       apiKey: settings.apiKey,
-      model: settings.scoringModel,
+      model: effectiveFlashcardModel,
       cards: cards,
       scopeTitle: scopeTitle,
       maxQuestions: maxQuestions,
@@ -440,12 +446,32 @@ class TutorRepository {
     required Uint8List audioWavBytes,
   }) async {
     final settings = await getSettings();
+    final effectiveFlashcardModel = settings.flashcardModel.trim().isNotEmpty
+        ? settings.flashcardModel
+        : settings.scoringModel;
     return _restProvider.evaluateSentencePronunciation(
       apiKey: settings.apiKey,
-      model: settings.scoringModel,
+      model: effectiveFlashcardModel,
       targetSentence: targetSentence,
       targetWord: targetWord,
       audioWavBytes: audioWavBytes,
+    );
+  }
+
+  /// Synthesizes English speech PCM16 24kHz audio via the configured Flashcard TTS model.
+  Future<Uint8List> synthesizeSpeechPcm24k({
+    required String text,
+    bool slow = false,
+  }) async {
+    final settings = await getSettings();
+    final ttsModel = settings.flashcardTtsModel.trim().isNotEmpty
+        ? settings.flashcardTtsModel
+        : GeminiConstants.defaultTtsModel;
+    return _restProvider.synthesizeSpeechPcm24k(
+      apiKey: settings.apiKey,
+      model: ttsModel,
+      text: text,
+      slow: slow,
     );
   }
 }

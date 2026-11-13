@@ -7,6 +7,7 @@ import '../../../data/providers/gemini_rest_provider.dart';
 import '../../../data/repositories/tutor_repository.dart';
 import '../../../data/services/audio_service.dart';
 import '../../../data/services/tts_service.dart';
+import 'flashcard_dialogs.dart';
 
 /// Opens an interactive shadowing & pronunciation evaluation bottom sheet for [sentence].
 Future<void> showSentencePronunciationSheet({
@@ -346,8 +347,9 @@ class _SentencePronunciationSheetState
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest
-                      .withValues(alpha: 0.45),
+                  color: colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.45,
+                  ),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
                     color: colorScheme.outlineVariant.withValues(alpha: 0.6),
@@ -386,28 +388,63 @@ class _SentencePronunciationSheetState
                 ),
               ),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed:
-                        isAudioBusy ? null : () => _speakExample(rate: 0.48),
-                    icon: const Icon(Icons.volume_up_rounded, size: 18),
-                    label: const Text('Dengar Normal'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed:
-                        isAudioBusy ? null : () => _speakExample(rate: 0.35),
-                    icon: const Icon(
-                      Icons.slow_motion_video_rounded,
-                      size: 18,
+              Obx(() {
+                final target = widget.sentence.trim();
+                final isTarget =
+                    target.isNotEmpty &&
+                    widget.ttsService.activeText.value == target;
+                final isLoadingTts =
+                    isTarget && widget.ttsService.isLoadingAudio.value;
+
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: isAudioBusy
+                          ? null
+                          : () => _speakExample(rate: 0.48),
+                      icon: isLoadingTts
+                          ? SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colorScheme.primary,
+                              ),
+                            )
+                          : const Icon(Icons.volume_up_rounded, size: 18),
+                      label: const Text('Dengar Normal'),
                     ),
-                    label: const Text('Dengar Pelan'),
-                  ),
-                ],
+                    OutlinedButton.icon(
+                      onPressed: isAudioBusy
+                          ? null
+                          : () => _speakExample(rate: 0.35),
+                      icon: isLoadingTts
+                          ? SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colorScheme.primary,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.slow_motion_video_rounded,
+                              size: 18,
+                            ),
+                      label: const Text('Dengar Pelan'),
+                    ),
+                  ],
+                );
+              }),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FlashcardVoiceSourceChip(ttsService: widget.ttsService),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               _buildStageContent(context),
             ],
           ),
@@ -534,8 +571,11 @@ class _SentencePronunciationSheetState
         children: [
           Row(
             children: [
-              Icon(Icons.fiber_manual_record_rounded,
-                  color: colorScheme.error, size: 18),
+              Icon(
+                Icons.fiber_manual_record_rounded,
+                color: colorScheme.error,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -790,10 +830,7 @@ class _SentencePronunciationSheetState
 }
 
 class _MetricChip extends StatelessWidget {
-  const _MetricChip({
-    required this.label,
-    required this.color,
-  });
+  const _MetricChip({required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -809,9 +846,9 @@ class _MetricChip extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -859,9 +896,9 @@ class _WordStatusChip extends StatelessWidget {
             child: Text(
               feedback.word,
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: chipColor,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: chipColor,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],

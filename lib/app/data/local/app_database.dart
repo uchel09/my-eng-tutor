@@ -39,7 +39,7 @@ class AppDatabase extends _$AppDatabase {
       : super(driftDatabase(name: 'my_english_tutor_db'));
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -55,6 +55,10 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(flashcardDecks);
             await m.createTable(flashcardSubDecks);
             await m.createTable(flashcards);
+          }
+          if (from < 4) {
+            await m.addColumn(appSettings, appSettings.flashcardModel);
+            await m.addColumn(appSettings, appSettings.flashcardTtsModel);
           }
         },
         beforeOpen: (OpeningDetails details) async {

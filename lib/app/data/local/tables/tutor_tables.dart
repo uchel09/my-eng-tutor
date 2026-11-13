@@ -93,6 +93,10 @@ class AppSettings extends Table {
       )();
   TextColumn get scoringModel =>
       text().withDefault(const Constant('gemini-2.5-flash'))();
+  TextColumn get flashcardModel =>
+      text().withDefault(const Constant('gemini-3.8-flash'))();
+  TextColumn get flashcardTtsModel =>
+      text().withDefault(const Constant('gemini-2.5-flash-preview-tts'))();
   BoolColumn get bilingualBeginnerSupport =>
       boolean().withDefault(const Constant(true))();
   BoolColumn get darkMode => boolean().withDefault(const Constant(false))();

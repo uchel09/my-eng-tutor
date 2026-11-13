@@ -501,6 +501,11 @@ class _StudyDetailPanel extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FlashcardVoiceSourceChip(ttsService: controller.ttsService),
+          ),
           const SizedBox(height: 12),
           _ExamplesSection(
             examples: examples,
@@ -596,21 +601,35 @@ class _FlipFlashcardTile extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Obx(() {
-                    final speaking = controller.ttsService.isSpeaking.value &&
-                        controller.ttsService.activeText.value ==
-                            card.word.trim();
+                    final target = card.word.trim();
+                    final isTarget = target.isNotEmpty &&
+                        controller.ttsService.activeText.value == target;
+                    final loading =
+                        isTarget && controller.ttsService.isLoadingAudio.value;
+                    final speaking = isTarget &&
+                        !loading &&
+                        controller.ttsService.isSpeaking.value;
                     return IconButton.filledTonal(
                       tooltip: 'Putar suara kata',
                       onPressed: () => controller.toggleSpeak(card.word),
                       iconSize: 26,
-                      icon: Icon(
-                        speaking
-                            ? Icons.graphic_eq_rounded
-                            : Icons.volume_up_rounded,
-                        color: speaking
-                            ? colorScheme.primary
-                            : colorScheme.onSecondaryContainer,
-                      ),
+                      icon: loading
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: colorScheme.primary,
+                              ),
+                            )
+                          : Icon(
+                              speaking
+                                  ? Icons.graphic_eq_rounded
+                                  : Icons.volume_up_rounded,
+                              color: speaking
+                                  ? colorScheme.primary
+                                  : colorScheme.onSecondaryContainer,
+                            ),
                     );
                   }),
                 ],
@@ -852,11 +871,16 @@ class _ExamplesSection extends StatelessWidget {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Obx(() {
-                                    final speaking =
-                                        controller.ttsService.isSpeaking.value &&
-                                            controller.ttsService.activeText
-                                                    .value ==
-                                                item.en.trim();
+                                    final target = item.en.trim();
+                                    final isTarget = target.isNotEmpty &&
+                                        controller.ttsService.activeText.value ==
+                                            target;
+                                    final loading = isTarget &&
+                                        controller
+                                            .ttsService.isLoadingAudio.value;
+                                    final speaking = isTarget &&
+                                        !loading &&
+                                        controller.ttsService.isSpeaking.value;
                                     return IconButton(
                                       tooltip: 'Dengarkan kalimat',
                                       visualDensity: VisualDensity.compact,
@@ -867,15 +891,25 @@ class _ExamplesSection extends StatelessWidget {
                                       padding: EdgeInsets.zero,
                                       onPressed: () =>
                                           controller.toggleSpeak(item.en),
-                                      icon: Icon(
-                                        speaking
-                                            ? Icons.graphic_eq_rounded
-                                            : Icons.volume_up_outlined,
-                                        size: 20,
-                                        color: speaking
-                                            ? colorScheme.primary
-                                            : colorScheme.onSurfaceVariant,
-                                      ),
+                                      icon: loading
+                                          ? SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: colorScheme.primary,
+                                              ),
+                                            )
+                                          : Icon(
+                                              speaking
+                                                  ? Icons.graphic_eq_rounded
+                                                  : Icons.volume_up_outlined,
+                                              size: 20,
+                                              color: speaking
+                                                  ? colorScheme.primary
+                                                  : colorScheme
+                                                      .onSurfaceVariant,
+                                            ),
                                     );
                                   }),
                                   const SizedBox(width: 4),
@@ -982,16 +1016,31 @@ class _MiniConversationCard extends StatelessWidget {
                   ),
                 ),
                 Obx(() {
-                  final speaking = controller.ttsService.isSpeaking.value &&
-                      controller.ttsService.activeText.value == spokenSegment;
+                  final target = spokenSegment.trim();
+                  final isTarget = target.isNotEmpty &&
+                      controller.ttsService.activeText.value == target;
+                  final loading =
+                      isTarget && controller.ttsService.isLoadingAudio.value;
+                  final speaking = isTarget &&
+                      !loading &&
+                      controller.ttsService.isSpeaking.value;
                   return IconButton.filledTonal(
                     tooltip: 'Dengarkan percakapan',
                     onPressed: () => controller.toggleSpeak(spokenSegment),
-                    icon: Icon(
-                      speaking
-                          ? Icons.graphic_eq_rounded
-                          : Icons.volume_up_rounded,
-                    ),
+                    icon: loading
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: colorScheme.primary,
+                            ),
+                          )
+                        : Icon(
+                            speaking
+                                ? Icons.graphic_eq_rounded
+                                : Icons.volume_up_rounded,
+                          ),
                   );
                 }),
               ],

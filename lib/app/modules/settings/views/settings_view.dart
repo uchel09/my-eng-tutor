@@ -264,6 +264,85 @@ class SettingsView extends GetView<SettingsController> {
                 hintText: GeminiConstants.defaultScoringModel,
               ),
             ),
+            const SizedBox(height: 16),
+            Text(
+              'Flashcard AI Model (Kalimat, Kuis & Pelafalan)',
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Obx(() {
+              final selected = controller.activeFlashcardModelText.value;
+              final options = controller.dynamicScoringModels.isNotEmpty
+                  ? controller.dynamicScoringModels
+                  : GeminiConstants.scoringModelOptions;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: options.map((model) {
+                  return ChoiceChip(
+                    label: Text(model),
+                    selected: selected == model,
+                    onSelected: (_) =>
+                        controller.selectFlashcardModelPreset(model),
+                  );
+                }).toList(growable: false),
+              );
+            }),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller.flashcardModelController,
+              focusNode: controller.flashcardModelFocusNode,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: 'Custom Flashcard AI Model ID',
+                hintText: GeminiConstants.defaultFlashcardModel,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Flashcard TTS Model (Suara AI REST)',
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Suara AI diputar via REST & cache RAM. Jika offline, API key kosong, atau kuota habis, otomatis memakai suara perangkat (flutter_tts).',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Obx(() {
+              final selected = controller.activeFlashcardTtsModelText.value;
+              final options = controller.dynamicTtsModels.isNotEmpty
+                  ? controller.dynamicTtsModels
+                  : GeminiConstants.ttsModelOptions;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: options.map((model) {
+                  return ChoiceChip(
+                    label: Text(model),
+                    selected: selected == model,
+                    onSelected: (_) =>
+                        controller.selectFlashcardTtsModelPreset(model),
+                  );
+                }).toList(growable: false),
+              );
+            }),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller.flashcardTtsModelController,
+              focusNode: controller.flashcardTtsModelFocusNode,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: 'Custom Flashcard TTS Model ID',
+                hintText: GeminiConstants.defaultTtsModel,
+              ),
+            ),
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerRight,

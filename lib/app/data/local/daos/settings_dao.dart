@@ -24,6 +24,8 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
 
   static const String defaultLiveModel = 'gemini-3.8-live';
   static const String defaultScoringModel = 'gemini-3.8-flash';
+  static const String defaultFlashcardModel = defaultScoringModel;
+  static const String defaultTtsModel = 'gemini-2.5-flash-preview-tts';
 
   /// Watches the singleton [AppSetting] row (`id = 1`).
   Stream<AppSetting> watchSettings() {
@@ -37,6 +39,8 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
                 apiKey: '',
                 liveModel: defaultLiveModel,
                 scoringModel: defaultScoringModel,
+                flashcardModel: defaultFlashcardModel,
+                flashcardTtsModel: defaultTtsModel,
                 bilingualBeginnerSupport: true,
                 darkMode: false,
                 unlockAllOverride: false,
@@ -101,6 +105,8 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
       'settings': <String, dynamic>{
         'liveModel': settings.liveModel,
         'scoringModel': settings.scoringModel,
+        'flashcardModel': settings.flashcardModel,
+        'flashcardTtsModel': settings.flashcardTtsModel,
         'bilingualBeginnerSupport': settings.bilingualBeginnerSupport,
         'darkMode': settings.darkMode,
         'unlockAllOverride': settings.unlockAllOverride,
@@ -409,6 +415,13 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
             ),
             scoringModel: Value(
               (rawSettings['scoringModel'] as String?) ?? defaultScoringModel,
+            ),
+            flashcardModel: Value(
+              (rawSettings['flashcardModel'] as String?) ??
+                  defaultFlashcardModel,
+            ),
+            flashcardTtsModel: Value(
+              (rawSettings['flashcardTtsModel'] as String?) ?? defaultTtsModel,
             ),
             bilingualBeginnerSupport: Value(
               (rawSettings['bilingualBeginnerSupport'] as bool?) ?? true,

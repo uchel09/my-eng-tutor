@@ -14,6 +14,7 @@ import '../../../data/local/app_database.dart';
 import '../../../data/providers/gemini_rest_provider.dart';
 import '../../../data/repositories/tutor_repository.dart';
 import '../../../data/services/audio_service.dart';
+import '../../../data/services/tts_service.dart';
 
 /// Controller for managing API keys, Gemini models, theme, audio tests, and backups.
 class SettingsController extends GetxController {
@@ -25,10 +26,16 @@ class SettingsController extends GetxController {
   final TextEditingController apiKeyController = TextEditingController();
   final TextEditingController liveModelController = TextEditingController();
   final TextEditingController scoringModelController = TextEditingController();
+  final TextEditingController flashcardModelController =
+      TextEditingController();
+  final TextEditingController flashcardTtsModelController =
+      TextEditingController();
 
   final FocusNode apiKeyFocusNode = FocusNode();
   final FocusNode liveModelFocusNode = FocusNode();
   final FocusNode scoringModelFocusNode = FocusNode();
+  final FocusNode flashcardModelFocusNode = FocusNode();
+  final FocusNode flashcardTtsModelFocusNode = FocusNode();
 
   final Rxn<AppSetting> settings = Rxn<AppSetting>();
   final RxBool isObscureApiKey = true.obs;
@@ -48,10 +55,15 @@ class SettingsController extends GetxController {
 
   final RxList<String> dynamicLiveModels = <String>[].obs;
   final RxList<String> dynamicScoringModels = <String>[].obs;
+  final RxList<String> dynamicTtsModels = <String>[].obs;
 
   final RxString activeLiveModelText = GeminiConstants.defaultLiveModel.obs;
   final RxString activeScoringModelText =
       GeminiConstants.defaultScoringModel.obs;
+  final RxString activeFlashcardModelText =
+      GeminiConstants.defaultFlashcardModel.obs;
+  final RxString activeFlashcardTtsModelText =
+      GeminiConstants.defaultTtsModel.obs;
 
   StreamSubscription<AppSetting>? _settingsSub;
   bool _hasInitializedFields = false;
@@ -65,6 +77,13 @@ class SettingsController extends GetxController {
     });
     scoringModelController.addListener(() {
       activeScoringModelText.value = scoringModelController.text.trim();
+    });
+    flashcardModelController.addListener(() {
+      activeFlashcardModelText.value = flashcardModelController.text.trim();
+    });
+    flashcardTtsModelController.addListener(() {
+      activeFlashcardTtsModelText.value = flashcardTtsModelController.text
+          .trim();
     });
 
     _settingsSub = repository.watchSettings().listen(_onSettingsChanged);
@@ -88,14 +107,22 @@ class SettingsController extends GetxController {
         scoringModelController.text = data.scoringModel;
       }
     }
+    if (!_hasInitializedFields || !flashcardModelFocusNode.hasFocus) {
+      if (flashcardModelController.text != data.flashcardModel) {
+        flashcardModelController.text = data.flashcardModel;
+      }
+    }
+    if (!_hasInitializedFields || !flashcardTtsModelFocusNode.hasFocus) {
+      if (flashcardTtsModelController.text != data.flashcardTtsModel) {
+        flashcardTtsModelController.text = data.flashcardTtsModel;
+      }
+    }
     _hasInitializedFields = true;
 
     if (_lastAppliedDarkMode != data.darkMode) {
       _lastAppliedDarkMode = data.darkMode;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Get.changeThemeMode(
-          data.darkMode ? ThemeMode.dark : ThemeMode.light,
-        );
+        Get.changeThemeMode(data.darkMode ? ThemeMode.dark : ThemeMode.light);
       });
     }
   }
@@ -104,13 +131,21 @@ class SettingsController extends GetxController {
     isObscureApiKey.toggle();
   }
 
-  /// Validates and persists the Gemini API key and Live/Scoring model IDs.
+  void _resetTtsCooldownIfRegistered() {
+    if (Get.isRegistered<TtsService>()) {
+      Get.find<TtsService>().resetAiVoiceCooldown();
+    }
+  }
+
+  /// Validates and persists the Gemini API key and Live/Scoring/Flashcard model IDs.
   Future<void> saveApiAndModelSettings() async {
     isSavingApi.value = true;
     try {
       final apiKey = apiKeyController.text.trim();
       var liveModel = liveModelController.text.trim();
       var scoringModel = scoringModelController.text.trim();
+      var flashcardModel = flashcardModelController.text.trim();
+      var flashcardTtsModel = flashcardTtsModelController.text.trim();
 
       if (liveModel.isEmpty) {
         liveModel = GeminiConstants.defaultLiveModel;
@@ -120,14 +155,25 @@ class SettingsController extends GetxController {
         scoringModel = GeminiConstants.defaultScoringModel;
         scoringModelController.text = scoringModel;
       }
+      if (flashcardModel.isEmpty) {
+        flashcardModel = GeminiConstants.defaultFlashcardModel;
+        flashcardModelController.text = flashcardModel;
+      }
+      if (flashcardTtsModel.isEmpty) {
+        flashcardTtsModel = GeminiConstants.defaultTtsModel;
+        flashcardTtsModelController.text = flashcardTtsModel;
+      }
 
       await repository.updateSettings(
         AppSettingsCompanion(
           apiKey: drift.Value(apiKey),
           liveModel: drift.Value(liveModel),
           scoringModel: drift.Value(scoringModel),
+          flashcardModel: drift.Value(flashcardModel),
+          flashcardTtsModel: drift.Value(flashcardTtsModel),
         ),
       );
+      _resetTtsCooldownIfRegistered();
 
       _showSnack(
         title: 'Pengaturan Disimpan',
@@ -163,6 +209,25 @@ class SettingsController extends GetxController {
     );
   }
 
+  /// Applies a Flashcard AI model preset and persists it immediately.
+  Future<void> selectFlashcardModelPreset(String model) async {
+    flashcardModelFocusNode.unfocus();
+    flashcardModelController.text = model;
+    await repository.updateSettings(
+      AppSettingsCompanion(flashcardModel: drift.Value(model)),
+    );
+  }
+
+  /// Applies a Flashcard TTS model preset and persists it immediately.
+  Future<void> selectFlashcardTtsModelPreset(String model) async {
+    flashcardTtsModelFocusNode.unfocus();
+    flashcardTtsModelController.text = model;
+    await repository.updateSettings(
+      AppSettingsCompanion(flashcardTtsModel: drift.Value(model)),
+    );
+    _resetTtsCooldownIfRegistered();
+  }
+
   /// Fetches active models for the entered API key and auto-heals deprecated IDs.
   Future<void> loadModelsFromApiKey({bool showSnackFeedback = true}) async {
     final apiKey = apiKeyController.text.trim();
@@ -173,7 +238,8 @@ class SettingsController extends GetxController {
       if (showSnackFeedback) {
         _showSnack(
           title: 'API Key Kosong',
-          message: 'Silakan masukkan Gemini API Key sebelum memuat daftar model.',
+          message:
+              'Silakan masukkan Gemini API Key sebelum memuat daftar model.',
           isError: true,
         );
       }
@@ -188,13 +254,17 @@ class SettingsController extends GetxController {
       final available = await repository.fetchAvailableModels(apiKey: apiKey);
       dynamicLiveModels.assignAll(available.liveModels);
       dynamicScoringModels.assignAll(available.scoringModels);
+      dynamicTtsModels.assignAll(available.ttsModels);
 
       final currentLive = liveModelController.text.trim();
       final currentScoring = scoringModelController.text.trim();
+      final currentFlashcard = flashcardModelController.text.trim();
+      final currentTts = flashcardTtsModelController.text.trim();
 
       String? updatedLive;
       if (available.liveModels.isNotEmpty &&
-          (currentLive.isEmpty || !available.liveModels.contains(currentLive))) {
+          (currentLive.isEmpty ||
+              !available.liveModels.contains(currentLive))) {
         updatedLive = available.liveModels.first;
         liveModelController.text = updatedLive;
       }
@@ -207,7 +277,25 @@ class SettingsController extends GetxController {
         scoringModelController.text = updatedScoring;
       }
 
-      if (updatedLive != null || updatedScoring != null) {
+      String? updatedFlashcard;
+      if (available.scoringModels.isNotEmpty &&
+          (currentFlashcard.isEmpty ||
+              !available.scoringModels.contains(currentFlashcard))) {
+        updatedFlashcard = available.scoringModels.first;
+        flashcardModelController.text = updatedFlashcard;
+      }
+
+      String? updatedTts;
+      if (available.ttsModels.isNotEmpty &&
+          (currentTts.isEmpty || !available.ttsModels.contains(currentTts))) {
+        updatedTts = available.ttsModels.first;
+        flashcardTtsModelController.text = updatedTts;
+      }
+
+      if (updatedLive != null ||
+          updatedScoring != null ||
+          updatedFlashcard != null ||
+          updatedTts != null) {
         await repository.updateSettings(
           AppSettingsCompanion(
             liveModel: updatedLive != null
@@ -216,23 +304,37 @@ class SettingsController extends GetxController {
             scoringModel: updatedScoring != null
                 ? drift.Value(updatedScoring)
                 : const drift.Value.absent(),
+            flashcardModel: updatedFlashcard != null
+                ? drift.Value(updatedFlashcard)
+                : const drift.Value.absent(),
+            flashcardTtsModel: updatedTts != null
+                ? drift.Value(updatedTts)
+                : const drift.Value.absent(),
           ),
         );
+        if (updatedTts != null) {
+          _resetTtsCooldownIfRegistered();
+        }
       }
 
       final liveCount = available.liveModels.length;
       final scoringCount = available.scoringModels.length;
-      if (liveCount == 0 && scoringCount == 0) {
+      final ttsCount = available.ttsModels.length;
+      if (liveCount == 0 && scoringCount == 0 && ttsCount == 0) {
         modelFetchSuccess.value = false;
         modelFetchMessage.value =
             'Tidak ditemukan model Gemini yang aktif pada API key ini.';
       } else {
         modelFetchSuccess.value = true;
-        final replacedNote = (updatedLive != null || updatedScoring != null)
+        final replacedNote =
+            (updatedLive != null ||
+                updatedScoring != null ||
+                updatedFlashcard != null ||
+                updatedTts != null)
             ? ' Model lama otomatis disesuaikan ke versi aktif.'
             : '';
         modelFetchMessage.value =
-            'Ditemukan $scoringCount model Scoring & $liveCount model Live.$replacedNote';
+            'Ditemukan $scoringCount model Scoring/Flashcard, $liveCount model Live & $ttsCount model TTS.$replacedNote';
       }
 
       if (showSnackFeedback && modelFetchMessage.value != null) {
@@ -624,9 +726,13 @@ class SettingsController extends GetxController {
     apiKeyController.dispose();
     liveModelController.dispose();
     scoringModelController.dispose();
+    flashcardModelController.dispose();
+    flashcardTtsModelController.dispose();
     apiKeyFocusNode.dispose();
     liveModelFocusNode.dispose();
     scoringModelFocusNode.dispose();
+    flashcardModelFocusNode.dispose();
+    flashcardTtsModelFocusNode.dispose();
     super.onClose();
   }
 }

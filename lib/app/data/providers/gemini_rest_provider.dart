@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 
 import '../../core/constants/gemini_constants.dart';
@@ -212,8 +213,8 @@ class SentencePronunciationFeedback {
     }
 
     final heardText = (json['heardText']?.toString() ?? '').trim();
-    final overallFeedback =
-        (json['overallFeedbackId']?.toString() ?? '').trim();
+    final overallFeedback = (json['overallFeedbackId']?.toString() ?? '')
+        .trim();
 
     return SentencePronunciationFeedback(
       score: overallScore,
@@ -246,15 +247,17 @@ class SentencePronunciationFeedback {
   }
 }
 
-/// Active Gemini model IDs partitioned by Live WebSocket and REST capabilities.
+/// Active Gemini model IDs partitioned by Live WebSocket, REST scoring, and REST TTS capabilities.
 class AvailableGeminiModels {
   const AvailableGeminiModels({
     required this.liveModels,
     required this.scoringModels,
+    this.ttsModels = const <String>[],
   });
 
   final List<String> liveModels;
   final List<String> scoringModels;
+  final List<String> ttsModels;
 }
 
 /// Exception representing REST API errors from Gemini with friendly Indonesian messages.
@@ -271,7 +274,7 @@ class GeminiApiException implements Exception {
 /// Handles Gemini REST API calls for API key validation and post-session evaluation.
 class GeminiRestProvider {
   GeminiRestProvider({http.Client? httpClient})
-      : _client = httpClient ?? http.Client();
+    : _client = httpClient ?? http.Client();
 
   final http.Client _client;
 
@@ -325,7 +328,7 @@ class GeminiRestProvider {
     return parseAvailableModels(Map<String, dynamic>.from(decoded));
   }
 
-  /// Parses a `/v1beta/models` JSON payload into categorized Live and Scoring model IDs.
+  /// Parses a `/v1beta/models` JSON payload into categorized Live, Scoring, and TTS model IDs.
   static AvailableGeminiModels parseAvailableModels(
     Map<String, dynamic> responseJson,
   ) {
@@ -334,11 +337,13 @@ class GeminiRestProvider {
       return const AvailableGeminiModels(
         liveModels: <String>[],
         scoringModels: <String>[],
+        ttsModels: <String>[],
       );
     }
 
     final liveModels = <String>[];
     final scoringModels = <String>[];
+    final ttsModels = <String>[];
 
     for (final entry in rawModels) {
       if (entry is! Map) continue;
@@ -359,18 +364,24 @@ class GeminiRestProvider {
         liveModels.add(modelId);
       }
 
-      if (methods.contains('generateContent') &&
-          !_isSpecializedNonScoringModel(lowerId)) {
-        scoringModels.add(modelId);
+      if (methods.contains('generateContent')) {
+        if (lowerId.contains('tts')) {
+          ttsModels.add(modelId);
+        }
+        if (!_isSpecializedNonScoringModel(lowerId)) {
+          scoringModels.add(modelId);
+        }
       }
     }
 
     liveModels.sort(_compareModelIds);
     scoringModels.sort(_compareModelIds);
+    ttsModels.sort(_compareModelIds);
 
     return AvailableGeminiModels(
       liveModels: liveModels.toList(growable: false),
       scoringModels: scoringModels.toList(growable: false),
+      ttsModels: ttsModels.toList(growable: false),
     );
   }
 
@@ -481,7 +492,8 @@ class GeminiRestProvider {
     }
 
     final normalizedCefr = targetCefrLevel.trim().toUpperCase();
-    final isBeginnerIndonesian = bilingualBeginnerSupport &&
+    final isBeginnerIndonesian =
+        bilingualBeginnerSupport &&
         (normalizedCefr == 'A1' || normalizedCefr == 'A2');
     final isPlacement = sessionType == 'placement';
 
@@ -511,10 +523,7 @@ class GeminiRestProvider {
 
     final payload = <String, dynamic>{
       'contents': <Map<String, dynamic>>[
-        <String, dynamic>{
-          'role': 'user',
-          'parts': parts,
-        },
+        <String, dynamic>{'role': 'user', 'parts': parts},
       ],
       'generationConfig': <String, dynamic>{
         'responseMimeType': 'application/json',
@@ -654,8 +663,11 @@ class GeminiRestProvider {
         return a.id.compareTo(b.id);
       });
 
-    final cappedCount =
-        maxQuestions < 1 ? 1 : (maxQuestions > prioritized.length ? prioritized.length : maxQuestions);
+    final cappedCount = maxQuestions < 1
+        ? 1
+        : (maxQuestions > prioritized.length
+              ? prioritized.length
+              : maxQuestions);
     final selectedCards = prioritized.take(cappedCount).toList(growable: false);
 
     final cardsById = <int, Flashcard>{
@@ -793,6 +805,175 @@ class GeminiRestProvider {
     }
   }
 
+  /// Extracts raw 24kHz PCM16 bytes from a Gemini TTS audio payload.
+  ///
+  /// When [rawBytes] contains a RIFF/WAVE container, locates the `'data'` chunk
+  /// and returns its sample payload; otherwise returns [rawBytes] unchanged.
+  @visibleForTesting
+  static Uint8List extractPcm24kFromAudioPayload(
+    Uint8List rawBytes, {
+    String mimeType = '',
+  }) {
+    if (rawBytes.length >= 12 &&
+        rawBytes[0] == 0x52 && // 'R'
+        rawBytes[1] == 0x49 && // 'I'
+        rawBytes[2] == 0x46 && // 'F'
+        rawBytes[3] == 0x46 && // 'F'
+        rawBytes[8] == 0x57 && // 'W'
+        rawBytes[9] == 0x41 && // 'A'
+        rawBytes[10] == 0x56 && // 'V'
+        rawBytes[11] == 0x45) // 'E'
+    {
+      final view = ByteData.view(
+        rawBytes.buffer,
+        rawBytes.offsetInBytes,
+        rawBytes.length,
+      );
+      var offset = 12;
+      while (offset + 8 <= rawBytes.length) {
+        final chunkId = String.fromCharCodes(rawBytes, offset, offset + 4);
+        final chunkSize = view.getUint32(offset + 4, Endian.little);
+        final dataStart = offset + 8;
+        final isUnbounded =
+            chunkSize == 0xFFFFFFFF || dataStart + chunkSize > rawBytes.length;
+        final dataEnd = isUnbounded ? rawBytes.length : dataStart + chunkSize;
+
+        if (chunkId == 'data') {
+          return Uint8List.fromList(rawBytes.sublist(dataStart, dataEnd));
+        }
+
+        final paddedSize = chunkSize + (chunkSize.isOdd ? 1 : 0);
+        if (paddedSize <= 0) break;
+        offset = dataStart + paddedSize;
+      }
+
+      if (rawBytes.length > 44) {
+        return Uint8List.fromList(rawBytes.sublist(44));
+      }
+      return Uint8List(0);
+    }
+
+    return rawBytes;
+  }
+
+  /// Synthesizes speech via Gemini REST `generateContent` (`responseModalities: ['AUDIO']`)
+  /// and returns raw 24kHz PCM16 audio bytes.
+  Future<Uint8List> synthesizeSpeechPcm24k({
+    required String apiKey,
+    required String model,
+    required String text,
+    bool slow = false,
+    String voiceName = GeminiConstants.defaultTtsVoice,
+  }) async {
+    final trimmedKey = apiKey.trim();
+    if (trimmedKey.isEmpty) {
+      throw const GeminiApiException(
+        'API key Gemini belum diisi. Masukkan API key di Pengaturan terlebih dahulu.',
+        statusCode: 400,
+      );
+    }
+
+    final trimmedModel = model.trim();
+    if (trimmedModel.isEmpty) {
+      throw const GeminiApiException(
+        'Model TTS Gemini belum dipilih.',
+        statusCode: 400,
+      );
+    }
+
+    final trimmedText = text.trim();
+    if (trimmedText.isEmpty) {
+      throw const GeminiApiException(
+        'Teks untuk sintesis suara tidak boleh kosong.',
+        statusCode: 400,
+      );
+    }
+
+    final directivePrompt = slow
+        ? 'Say slowly and clearly for an English learner: $trimmedText'
+        : 'Say naturally: $trimmedText';
+
+    final payload = <String, dynamic>{
+      'contents': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'role': 'user',
+          'parts': <Map<String, dynamic>>[
+            <String, dynamic>{'text': directivePrompt},
+          ],
+        },
+      ],
+      'generationConfig': <String, dynamic>{
+        'responseModalities': <String>['AUDIO'],
+        'speechConfig': <String, dynamic>{
+          'voiceConfig': <String, dynamic>{
+            'prebuiltVoiceConfig': <String, dynamic>{'voiceName': voiceName},
+          },
+        },
+      },
+    };
+
+    final responseJson = await _postGenerateContent(
+      apiKey: trimmedKey,
+      model: trimmedModel,
+      body: payload,
+      timeout: const Duration(seconds: 15),
+    );
+
+    final inlineAudio = _extractFirstAudioInlineData(responseJson);
+    if (inlineAudio == null || inlineAudio.base64Data.isEmpty) {
+      throw const GeminiApiException(
+        'Gemini tidak mengembalikan data audio TTS. Silakan coba lagi.',
+      );
+    }
+
+    Uint8List decodedBytes;
+    try {
+      decodedBytes = base64Decode(inlineAudio.base64Data);
+    } on FormatException {
+      throw const GeminiApiException(
+        'Format base64 audio TTS dari Gemini tidak valid.',
+      );
+    }
+
+    final pcmBytes = extractPcm24kFromAudioPayload(
+      decodedBytes,
+      mimeType: inlineAudio.mimeType,
+    );
+    if (pcmBytes.isEmpty) {
+      throw const GeminiApiException('Payload audio TTS dari Gemini kosong.');
+    }
+    return pcmBytes;
+  }
+
+  ({String mimeType, String base64Data})? _extractFirstAudioInlineData(
+    Map<String, dynamic> responseJson,
+  ) {
+    final candidates = responseJson['candidates'];
+    if (candidates is! List || candidates.isEmpty) return null;
+
+    final firstCandidate = candidates.first;
+    if (firstCandidate is! Map) return null;
+
+    final content = firstCandidate['content'];
+    if (content is! Map) return null;
+
+    final parts = content['parts'];
+    if (parts is! List || parts.isEmpty) return null;
+
+    for (final part in parts) {
+      if (part is! Map) continue;
+      final inlineData = part['inlineData'] ?? part['inline_data'];
+      if (inlineData is! Map) continue;
+      final data = (inlineData['data']?.toString() ?? '').trim();
+      if (data.isEmpty) continue;
+      final mimeType = (inlineData['mimeType'] ?? inlineData['mime_type'] ?? '')
+          .toString()
+          .trim();
+      return (mimeType: mimeType, base64Data: data);
+    }
+    return null;
+  }
+
   Future<Map<String, dynamic>> _postGenerateContent({
     required String apiKey,
     required String model,
@@ -811,9 +992,7 @@ class GeminiRestProvider {
       response = await _client
           .post(
             uri,
-            headers: const <String, String>{
-              'Content-Type': 'application/json',
-            },
+            headers: const <String, String>{'Content-Type': 'application/json'},
             body: jsonEncode(body),
           )
           .timeout(timeout);
@@ -878,10 +1057,9 @@ class GeminiRestProvider {
     }
 
     if (statusCode == 404) {
-      final modelLabel =
-          (attemptedModel != null && attemptedModel.isNotEmpty)
-              ? ' "$attemptedModel"'
-              : '';
+      final modelLabel = (attemptedModel != null && attemptedModel.isNotEmpty)
+          ? ' "$attemptedModel"'
+          : '';
       final detailNote = rawDetail.isNotEmpty ? ' Detail: $rawDetail.' : '';
       return GeminiApiException(
         'Model Gemini$modelLabel tidak ditemukan (HTTP 404).$detailNote Ketuk "Muat Model dari API Key" atau pilih model lain di Settings.',
@@ -955,7 +1133,9 @@ class GeminiRestProvider {
   }) {
     final transcriptBuffer = StringBuffer();
     if (transcript.isEmpty) {
-      transcriptBuffer.writeln('(No text transcript captured; rely on audio if attached.)');
+      transcriptBuffer.writeln(
+        '(No text transcript captured; rely on audio if attached.)',
+      );
     } else {
       for (final turn in transcript) {
         final speaker = turn.role == 'tutor' ? 'Tutor' : 'Learner';
@@ -1049,12 +1229,12 @@ $transcriptBuffer
   }) {
     final meaningHintLine =
         (currentMeaningId != null && currentMeaningId.trim().isNotEmpty)
-            ? '- Known Indonesian meaning hint: "${currentMeaningId.trim()}"\n'
-            : '';
+        ? '- Known Indonesian meaning hint: "${currentMeaningId.trim()}"\n'
+        : '';
     final typeHintLine =
         (wordTypeHint != null && wordTypeHint.trim().isNotEmpty)
-            ? '- Word type hint from user/card: "${wordTypeHint.trim()}"\n'
-            : '';
+        ? '- Word type hint from user/card: "${wordTypeHint.trim()}"\n'
+        : '';
 
     final examplesRule = includeAll16Tenses
         ? '''
@@ -1174,7 +1354,8 @@ Return ONLY strict JSON matching this schema (no markdown fences):
           : int.tryParse(rawCardId?.toString() ?? '');
       final rawWord = (item['word']?.toString() ?? '').trim();
 
-      final matchedCard = (parsedId != null ? cardsById[parsedId] : null) ??
+      final matchedCard =
+          (parsedId != null ? cardsById[parsedId] : null) ??
           cardsByWord[rawWord.toLowerCase()];
       if (matchedCard == null) continue;
 
@@ -1220,8 +1401,8 @@ Return ONLY strict JSON matching this schema (no markdown fences):
     final trimmedTargetWord = targetWord?.trim();
     final focusLine =
         (trimmedTargetWord != null && trimmedTargetWord.isNotEmpty)
-            ? '- Target vocabulary word to inspect closely: "$trimmedTargetWord"\n'
-            : '';
+        ? '- Target vocabulary word to inspect closely: "$trimmedTargetWord"\n'
+        : '';
 
     return '''
 You are an encouraging, accurate English pronunciation coach evaluating an Indonesian learner's speech recording.

@@ -18,6 +18,15 @@ class GeminiConstants {
   /// Default Gemini model for post-session scoring and text analysis.
   static const String defaultScoringModel = SettingsDao.defaultScoringModel;
 
+  /// Default Gemini model for Flashcard AI examples, quiz & pronunciation.
+  static const String defaultFlashcardModel = SettingsDao.defaultFlashcardModel;
+
+  /// Default Gemini REST TTS model for Flashcard speech synthesis.
+  static const String defaultTtsModel = SettingsDao.defaultTtsModel;
+
+  /// Default prebuilt Gemini TTS speaker voice.
+  static const String defaultTtsVoice = 'Kore';
+
   /// Recommended Live API model choices displayed in Settings.
   static const List<String> liveModelOptions = <String>[
     'gemini-3.8-live',
@@ -30,6 +39,13 @@ class GeminiConstants {
     'gemini-3.8-flash',
     'gemini-3.5-flash-lite',
     'gemini-2.5-flash',
+  ];
+
+  /// Recommended Gemini REST TTS model choices displayed in Settings.
+  static const List<String> ttsModelOptions = <String>[
+    'gemini-2.5-flash-preview-tts',
+    'gemini-3.1-flash-tts',
+    'gemini-3.8-flash-tts',
   ];
 
   /// Required microphone PCM16 input sample rate (16 kHz) for Gemini Live.
