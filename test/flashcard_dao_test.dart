@@ -1214,4 +1214,269 @@ void main() {
       );
     });
   });
+
+  group('FlashcardDao Export & Safe Merge Import (F20)', () {
+    late AppDatabase db;
+
+    setUp(() async {
+      db = AppDatabase(NativeDatabase.memory());
+      await db.roadmapDao.watchAllLevelsWithLessons().first;
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    test('exportFlashcardsAsMap exports portable schema without DB IDs', () async {
+      final deckId = await db.flashcardDao.createDeck(
+        name: 'Level A1 (Pemula)',
+        description: 'Kosakata dasar',
+      );
+      final subDeckId = await db.flashcardDao.createSubDeck(
+        deckId: deckId,
+        name: 'Sapaan',
+        description: 'Percakapan awal',
+      );
+      final cardId = await db.flashcardDao.createFlashcard(
+        subDeckId: subDeckId,
+        word: 'hello',
+        phonetic: '/həˈloʊ/',
+        meaningId: 'halo',
+        wordType: 'non_verb',
+        partsOfSpeech: const <String>['interjection'],
+        examples: const <FlashcardExampleItem>[
+          FlashcardExampleItem(
+            tense: 'Simple Present',
+            en: 'Hello, nice to meet you.',
+            id: 'Halo, senang bertemu denganmu.',
+          ),
+        ],
+        aiConversation: 'A: Hello!\nB: Hi there!',
+      );
+      await db.flashcardDao.updateCardStudyStatus(
+        cardId: cardId,
+        studyStatus: FlashcardStudyStatus.mastered,
+      );
+
+      final exported = await db.flashcardDao.exportFlashcardsAsMap();
+      expect(exported['schemaVersion'], 1);
+      expect(exported['type'], 'my_english_tutor_flashcards');
+      expect(exported['exportedAt'], isA<String>());
+
+      final decks = exported['decks'] as List<dynamic>;
+      expect(decks, hasLength(1));
+      final deck = decks.single as Map<String, dynamic>;
+      expect(deck.containsKey('id'), isFalse);
+      expect(deck['name'], 'Level A1 (Pemula)');
+      expect(deck['description'], 'Kosakata dasar');
+
+      final subDecks = deck['subDecks'] as List<dynamic>;
+      expect(subDecks, hasLength(1));
+      final subDeck = subDecks.single as Map<String, dynamic>;
+      expect(subDeck.containsKey('id'), isFalse);
+      expect(subDeck['name'], 'Sapaan');
+
+      final cards = subDeck['cards'] as List<dynamic>;
+      expect(cards, hasLength(1));
+      final card = cards.single as Map<String, dynamic>;
+      expect(card.containsKey('id'), isFalse);
+      expect(card.containsKey('subDeckId'), isFalse);
+      expect(card['word'], 'hello');
+      expect(card['phonetic'], '/həˈloʊ/');
+      expect(card['meaningId'], 'halo');
+      expect(card['partsOfSpeech'], <String>['Interjection']);
+      expect(card['studyStatus'], FlashcardStudyStatus.mastered);
+      expect((card['examples'] as List<dynamic>), hasLength(1));
+      expect(card['aiConversation'], 'A: Hello!\nB: Hi there!');
+    });
+
+    test(
+      'importFlashcardsFromMap merges safely without deleting or overwriting studied cards',
+      () async {
+        final existingDeckId = await db.flashcardDao.createDeck(
+          name: 'Level A1',
+        );
+        final existingSubDeckId = await db.flashcardDao.createSubDeck(
+          deckId: existingDeckId,
+          name: 'Greetings',
+        );
+        final untouchedDeckId = await db.flashcardDao.createDeck(
+          name: 'Personal Deck',
+        );
+        final untouchedSubDeckId = await db.flashcardDao.createSubDeck(
+          deckId: untouchedDeckId,
+          name: 'Custom Words',
+        );
+        await db.flashcardDao.createFlashcard(
+          subDeckId: untouchedSubDeckId,
+          word: 'resilient',
+          meaningId: 'tangguh',
+          wordType: 'non_verb',
+        );
+
+        // Card 1: already mastered with rich content (must NOT be overwritten).
+        final masteredCardId = await db.flashcardDao.createFlashcard(
+          subDeckId: existingSubDeckId,
+          word: 'hello',
+          phonetic: '/həˈloʊ/',
+          meaningId: 'halo (lama)',
+          wordType: 'non_verb',
+          partsOfSpeech: const <String>['noun'],
+          aiConversation: 'Existing conversation',
+        );
+        await db.flashcardDao.recordCardReview(
+          cardId: masteredCardId,
+          isCorrect: true,
+        );
+        await db.flashcardDao.updateCardStudyStatus(
+          cardId: masteredCardId,
+          studyStatus: FlashcardStudyStatus.mastered,
+        );
+
+        // Card 2: exists locally with blank phonetic/examples/progress (should fill gaps).
+        await db.flashcardDao.createFlashcard(
+          subDeckId: existingSubDeckId,
+          word: 'welcome',
+          phonetic: '',
+          meaningId: '',
+          wordType: 'non_verb',
+        );
+
+        final result = await db.flashcardDao.importFlashcardsFromMap(<String, dynamic>{
+          'schemaVersion': 1,
+          'type': 'my_english_tutor_flashcards',
+          'decks': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'name': '  level a1  ',
+              'subDecks': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'name': 'GREETINGS',
+                  'cards': <Map<String, dynamic>>[
+                    <String, dynamic>{
+                      'word': 'Hello',
+                      'phonetic': '/wrong/',
+                      'meaningId': 'halo baru',
+                      'partsOfSpeech': <String>['interjection'],
+                      'aiConversation': 'Overwriting dialogue',
+                      'studyStatus': 0,
+                      'masteryLevel': 0,
+                      'reviewCount': 0,
+                    },
+                    <String, dynamic>{
+                      'word': 'welcome',
+                      'phonetic': '/ˈwelkəm/',
+                      'meaningId': 'selamat datang',
+                      'partsOfSpeech': <String>['verb', 'noun'],
+                      'examples': <Map<String, dynamic>>[
+                        <String, dynamic>{
+                          'tense': 'Simple Present',
+                          'en': 'Welcome home!',
+                          'id': 'Selamat datang di rumah!',
+                        },
+                      ],
+                      'studyStatus': 2,
+                      'masteryLevel': 2,
+                      'reviewCount': 3,
+                    },
+                    <String, dynamic>{
+                      'word': 'goodbye',
+                      'phonetic': '/ˌɡʊdˈbaɪ/',
+                      'meaningId': 'selamat tinggal',
+                      'partsOfSpeech': <String>['interjection'],
+                    },
+                  ],
+                },
+              ],
+            },
+            <String, dynamic>{
+              'name': 'Level A2',
+              'subDecks': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'name': 'Travel',
+                  'cards': <Map<String, dynamic>>[
+                    <String, dynamic>{
+                      'word': 'boarding pass',
+                      'phonetic': '/ˈbɔːrdɪŋ pæs/',
+                      'meaningId': 'kartu naik pesawat',
+                      'partsOfSpeech': <String>['noun'],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+
+        expect(result.deckCount, 2);
+        expect(result.subDeckCount, 2);
+        expect(result.insertedCount, 2); // goodbye + boarding pass
+        expect(result.updatedCount, 1); // welcome
+        expect(result.skippedCount, 1); // hello
+
+        final allDecks = await db.flashcardDao.getDecksWithStats();
+        expect(allDecks.map((d) => d.deck.name), containsAll(<String>[
+          'Level A1',
+          'Personal Deck',
+          'Level A2',
+        ]));
+
+        final a1Cards = await db.flashcardDao.getCardsBySubDeck(existingSubDeckId);
+        expect(a1Cards, hasLength(3));
+
+        final helloCard = a1Cards.firstWhere((c) => c.word == 'hello');
+        expect(helloCard.meaningId, 'halo (lama)');
+        expect(helloCard.phonetic, '/həˈloʊ/');
+        expect(helloCard.aiConversation, 'Existing conversation');
+        expect(helloCard.studyStatus, FlashcardStudyStatus.mastered);
+        expect(helloCard.masteryLevel, 1);
+        expect(helloCard.reviewCount, 1);
+
+        final welcomeCard = a1Cards.firstWhere((c) => c.word == 'welcome');
+        expect(welcomeCard.phonetic, '/ˈwelkəm/');
+        expect(welcomeCard.meaningId, 'selamat datang');
+        expect(welcomeCard.wordType, 'verb');
+        expect(welcomeCard.studyStatus, FlashcardStudyStatus.mastered);
+        expect(welcomeCard.masteryLevel, 2);
+        expect(welcomeCard.reviewCount, 3);
+      },
+    );
+
+    test('importFlashcardsFromMap supports legacy full backup shape & rejects invalid JSON', () async {
+      final legacyResult = await db.flashcardDao.importFlashcardsFromMap(
+        <String, dynamic>{
+          'flashcardDecks': <Map<String, dynamic>>[
+            <String, dynamic>{'id': 99, 'name': 'Backup Deck'},
+          ],
+          'flashcardSubDecks': <Map<String, dynamic>>[
+            <String, dynamic>{'id': 199, 'deckId': 99, 'name': 'Backup SubDeck'},
+          ],
+          'flashcards': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'subDeckId': 199,
+              'word': 'gratitude',
+              'meaningId': 'rasa syukur',
+              'partsOfSpeechJson': '["noun"]',
+              'studyStatus': 1,
+            },
+          ],
+        },
+      );
+
+      expect(legacyResult.insertedCount, 1);
+      final decks = await db.flashcardDao.getDecksWithStats();
+      expect(decks.single.deck.name, 'Backup Deck');
+      expect(decks.single.reviewCardCount, 1);
+
+      await expectLater(
+        () => db.flashcardDao.importFlashcardsFromMap(<String, dynamic>{}),
+        throwsFormatException,
+      );
+      await expectLater(
+        () => db.flashcardDao.importFlashcardsFromMap(<String, dynamic>{
+          'decks': <dynamic>[],
+        }),
+        throwsFormatException,
+      );
+    });
+  });
 }

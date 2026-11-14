@@ -1650,4 +1650,85 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     },
   );
+
+  testWidgets(
+    'Flashcards export/import menu, empty state button, download sheet shortcut & merge import work cleanly at 360dp',
+    (WidgetTester tester) async {
+      final overflowErrors = <FlutterErrorDetails>[];
+      final oldOnError = FlutterError.onError;
+      FlutterError.onError = (FlutterErrorDetails details) {
+        if (details.exceptionAsString().contains('RenderFlex overflowed')) {
+          overflowErrors.add(details);
+        }
+        oldOnError?.call(details);
+      };
+      addTearDown(() => FlutterError.onError = oldOnError);
+
+      await pumpAppWith360Viewport(
+        tester,
+        const SizedBox.shrink(),
+        initialRoute: AppPages.INITIAL,
+        size: const Size(360, 760),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Flashcard'));
+      await tester.pumpAndSettle();
+
+      // Empty state displays secondary Import JSON button without overflow.
+      expect(find.text('Import dari File JSON'), findsOneWidget);
+
+      // AppBar overflow menu lists Import & Export Flashcard JSON options.
+      await tester.tap(find.byTooltip('Opsi Flashcard'));
+      await tester.pumpAndSettle();
+      expect(find.text('Import Flashcard JSON'), findsOneWidget);
+      expect(find.text('Export Flashcard JSON'), findsOneWidget);
+
+      // Dismiss popup menu.
+      await tester.tapAt(const Offset(16, 16));
+      await tester.pumpAndSettle();
+
+      // Open download sheet and verify JSON import shortcut exists.
+      await tester.tap(find.text('Unduh Paket'));
+      await tester.pumpAndSettle();
+      expect(find.text('Atau Import Paket dari File JSON'), findsOneWidget);
+      Get.back<void>();
+      await tester.pumpAndSettle();
+
+      // Merge JSON payload directly via controller helper and confirm Deck renders.
+      final flashcardsCtrl = Get.find<FlashcardsController>();
+      final importResult = await tester.runAsync(
+        () => flashcardsCtrl.importFlashcardsPayload(<String, dynamic>{
+          'schemaVersion': 1,
+          'type': 'my_english_tutor_flashcards',
+          'decks': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'name': 'Imported Business Deck',
+              'subDecks': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'name': 'Meetings',
+                  'cards': <Map<String, dynamic>>[
+                    <String, dynamic>{
+                      'word': 'agenda',
+                      'phonetic': '/əˈdʒendə/',
+                      'meaningId': 'agenda rapat',
+                      'partsOfSpeech': <String>['noun'],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      await tester.pumpAndSettle();
+
+      expect(importResult!.insertedCount, 1);
+      expect(find.text('Imported Business Deck'), findsOneWidget);
+      expect(overflowErrors, isEmpty);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 50));
+    },
+  );
 }

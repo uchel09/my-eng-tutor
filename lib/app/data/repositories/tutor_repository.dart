@@ -470,6 +470,16 @@ class TutorRepository {
     return _database.flashcardDao.deleteFlashcard(cardId);
   }
 
+  Future<Map<String, dynamic>> exportFlashcardsJson() {
+    return _database.flashcardDao.exportFlashcardsAsMap();
+  }
+
+  Future<FlashcardImportResult> importFlashcardsJson(
+    Map<String, dynamic> json,
+  ) {
+    return _database.flashcardDao.importFlashcardsFromMap(json);
+  }
+
   // --- Flashcard AI Content & Quiz Generation ---
 
   Future<FlashcardPracticeAiResult> generateFlashcardPracticeContent({

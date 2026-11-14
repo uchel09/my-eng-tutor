@@ -278,6 +278,17 @@ class _FlashcardPackDownloadSheet extends StatelessWidget {
                   );
                 },
               ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: isDownloading
+                    ? null
+                    : () {
+                        Navigator.of(context).pop();
+                        controller.importFlashcards();
+                      },
+                icon: const Icon(Icons.file_upload_outlined, size: 18),
+                label: const Text('Atau Import Paket dari File JSON'),
+              ),
             ],
           );
         }),

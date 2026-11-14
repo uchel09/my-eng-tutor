@@ -46,6 +46,25 @@ class FlashcardStudyStatus {
   }
 }
 
+/// Summary counters returned by [FlashcardDao.importFlashcardsFromMap].
+class FlashcardImportResult {
+  const FlashcardImportResult({
+    required this.deckCount,
+    required this.subDeckCount,
+    required this.insertedCount,
+    required this.updatedCount,
+    required this.skippedCount,
+  });
+
+  final int deckCount;
+  final int subDeckCount;
+  final int insertedCount;
+  final int updatedCount;
+  final int skippedCount;
+
+  int get totalProcessed => insertedCount + updatedCount + skippedCount;
+}
+
 /// Aggregated statistics for a Level-1 [FlashcardDeck].
 class DeckWithStats {
   const DeckWithStats({
@@ -915,6 +934,572 @@ class FlashcardDao extends DatabaseAccessor<AppDatabase>
 
       return toInsert.length;
     });
+  }
+
+  /// Exports all Decks, Sub-Decks, and Flashcards as a portable JSON map
+  /// without auto-increment IDs.
+  Future<Map<String, dynamic>> exportFlashcardsAsMap() async {
+    final decks = await (select(flashcardDecks)
+          ..orderBy([
+            (t) => OrderingTerm.asc(t.createdAt),
+            (t) => OrderingTerm.asc(t.id),
+          ]))
+        .get();
+    final subDecks = await (select(flashcardSubDecks)
+          ..orderBy([
+            (t) => OrderingTerm.asc(t.createdAt),
+            (t) => OrderingTerm.asc(t.id),
+          ]))
+        .get();
+    final cards = await (select(flashcards)
+          ..orderBy([
+            (t) => OrderingTerm.asc(t.createdAt),
+            (t) => OrderingTerm.asc(t.id),
+          ]))
+        .get();
+
+    final subDecksByDeckId = <int, List<FlashcardSubDeck>>{};
+    for (final subDeck in subDecks) {
+      subDecksByDeckId
+          .putIfAbsent(subDeck.deckId, () => <FlashcardSubDeck>[])
+          .add(subDeck);
+    }
+
+    final cardsBySubDeckId = <int, List<Flashcard>>{};
+    for (final card in cards) {
+      cardsBySubDeckId
+          .putIfAbsent(card.subDeckId, () => <Flashcard>[])
+          .add(card);
+    }
+
+    final exportedDecks = <Map<String, dynamic>>[];
+    for (final deck in decks) {
+      final childSubDecks =
+          subDecksByDeckId[deck.id] ?? const <FlashcardSubDeck>[];
+      final exportedSubDecks = <Map<String, dynamic>>[];
+
+      for (final subDeck in childSubDecks) {
+        final childCards =
+            cardsBySubDeckId[subDeck.id] ?? const <Flashcard>[];
+        final exportedCards = childCards.map((card) {
+          return <String, dynamic>{
+            'word': card.word,
+            'phonetic': card.phonetic ?? '',
+            'meaningId': card.meaningId,
+            'wordType': card.wordType,
+            'partsOfSpeech': FlashcardPosHelper.decodePartsOfSpeech(
+              card.partsOfSpeechJson,
+            ),
+            'examples': _decodeJsonListSafe(card.examplesJson),
+            'verbTensesExamples': _decodeJsonListSafe(
+              card.verbTensesExamplesJson,
+            ),
+            'aiConversation': card.aiConversation,
+            'masteryLevel': card.masteryLevel,
+            'reviewCount': card.reviewCount,
+            'studyStatus': card.studyStatus,
+          };
+        }).toList(growable: false);
+
+        exportedSubDecks.add(<String, dynamic>{
+          'name': subDeck.name,
+          'description': subDeck.description ?? '',
+          'cards': exportedCards,
+        });
+      }
+
+      exportedDecks.add(<String, dynamic>{
+        'name': deck.name,
+        'description': deck.description ?? '',
+        'subDecks': exportedSubDecks,
+      });
+    }
+
+    return <String, dynamic>{
+      'schemaVersion': 1,
+      'type': 'my_english_tutor_flashcards',
+      'exportedAt': DateTime.now().toIso8601String(),
+      'decks': exportedDecks,
+    };
+  }
+
+  /// Safely merges exported Flashcards JSON (or legacy full backup JSON)
+  /// without deleting existing Decks, Sub-Decks, Cards, or study progress.
+  Future<FlashcardImportResult> importFlashcardsFromMap(
+    Map<String, dynamic> json,
+  ) async {
+    final parsedDecks = _parseImportDecks(json);
+    if (parsedDecks.isEmpty) {
+      throw const FormatException('Format file Flashcard JSON tidak valid.');
+    }
+
+    return transaction(() async {
+      final now = DateTime.now();
+      var deckCount = 0;
+      var subDeckCount = 0;
+      var insertedCount = 0;
+      var updatedCount = 0;
+      var skippedCount = 0;
+
+      for (final parsedDeck in parsedDecks) {
+        final deckId = await getOrCreateDeckByName(
+          name: parsedDeck.name,
+          description: parsedDeck.description,
+        );
+        deckCount++;
+        var deckTouched = false;
+
+        for (final parsedSubDeck in parsedDeck.subDecks) {
+          final subDeckId = await getOrCreateSubDeckByName(
+            deckId: deckId,
+            name: parsedSubDeck.name,
+            description: parsedSubDeck.description,
+          );
+          subDeckCount++;
+
+          final existingCards = await getCardsBySubDeck(subDeckId);
+          final existingByWord = <String, Flashcard>{
+            for (final card in existingCards)
+              card.word.trim().toLowerCase(): card,
+          };
+          final queuedInsertWords = <String>{};
+          final toInsert = <FlashcardsCompanion>[];
+          var subDeckTouched = false;
+
+          for (final card in parsedSubDeck.cards) {
+            final trimmedWord = card.word.trim();
+            if (trimmedWord.isEmpty) continue;
+            final wordKey = trimmedWord.toLowerCase();
+
+            final normalizedPos = FlashcardPosHelper.normalizePartsOfSpeech(
+              card.partsOfSpeech,
+            );
+            final resolvedWordType = FlashcardPosHelper.deriveWordType(
+              normalizedPos,
+              fallback: card.wordType.isEmpty ? 'non_verb' : card.wordType,
+            );
+            final encodedPos =
+                FlashcardPosHelper.encodePartsOfSpeech(normalizedPos);
+            final encodedExamples = _encodeJsonListSafe(card.examples);
+            final encodedVerbTenses = _encodeJsonListSafe(
+              card.verbTensesExamples,
+            );
+            final importedStudyStatus =
+                FlashcardStudyStatus.clamp(card.studyStatus);
+            final importedMastery = math.max(0, card.masteryLevel);
+            final importedReviews = math.max(0, card.reviewCount);
+
+            final existing = existingByWord[wordKey];
+            if (existing != null) {
+              final existingPos = FlashcardPosHelper.decodePartsOfSpeech(
+                existing.partsOfSpeechJson,
+              );
+              final needsPhonetic =
+                  (existing.phonetic ?? '').trim().isEmpty &&
+                  card.phonetic.isNotEmpty;
+              final needsMeaning =
+                  existing.meaningId.trim().isEmpty &&
+                  card.meaningId.isNotEmpty;
+              final needsPos = existingPos.isEmpty && normalizedPos.isNotEmpty;
+              final needsExamples =
+                  _isJsonListEmpty(existing.examplesJson) &&
+                  !_isJsonListEmpty(encodedExamples);
+              final needsVerbTenses =
+                  _isJsonListEmpty(existing.verbTensesExamplesJson) &&
+                  !_isJsonListEmpty(encodedVerbTenses);
+              final needsConversation =
+                  existing.aiConversation.trim().isEmpty &&
+                  card.aiConversation.isNotEmpty;
+              final needsStudyStatus =
+                  existing.studyStatus == FlashcardStudyStatus.unstudied &&
+                  importedStudyStatus > FlashcardStudyStatus.unstudied;
+              final needsMastery =
+                  existing.masteryLevel == 0 && importedMastery > 0;
+              final needsReviews =
+                  existing.reviewCount == 0 && importedReviews > 0;
+
+              if (needsPhonetic ||
+                  needsMeaning ||
+                  needsPos ||
+                  needsExamples ||
+                  needsVerbTenses ||
+                  needsConversation ||
+                  needsStudyStatus ||
+                  needsMastery ||
+                  needsReviews) {
+                await (update(flashcards)
+                      ..where((t) => t.id.equals(existing.id)))
+                    .write(
+                  FlashcardsCompanion(
+                    phonetic: needsPhonetic
+                        ? Value(card.phonetic)
+                        : const Value.absent(),
+                    meaningId: needsMeaning
+                        ? Value(card.meaningId)
+                        : const Value.absent(),
+                    partsOfSpeechJson: needsPos
+                        ? Value(encodedPos)
+                        : const Value.absent(),
+                    wordType: needsPos
+                        ? Value(resolvedWordType)
+                        : const Value.absent(),
+                    examplesJson: needsExamples
+                        ? Value(encodedExamples)
+                        : const Value.absent(),
+                    verbTensesExamplesJson: needsVerbTenses
+                        ? Value(encodedVerbTenses)
+                        : const Value.absent(),
+                    aiConversation: needsConversation
+                        ? Value(card.aiConversation)
+                        : const Value.absent(),
+                    studyStatus: needsStudyStatus
+                        ? Value(importedStudyStatus)
+                        : const Value.absent(),
+                    masteryLevel: needsMastery
+                        ? Value(importedMastery)
+                        : const Value.absent(),
+                    reviewCount: needsReviews
+                        ? Value(importedReviews)
+                        : const Value.absent(),
+                  ),
+                );
+                existingByWord[wordKey] = existing.copyWith(
+                  phonetic: needsPhonetic
+                      ? Value(card.phonetic)
+                      : Value(existing.phonetic),
+                  meaningId: needsMeaning
+                      ? card.meaningId
+                      : existing.meaningId,
+                  partsOfSpeechJson: needsPos
+                      ? encodedPos
+                      : existing.partsOfSpeechJson,
+                  wordType: needsPos ? resolvedWordType : existing.wordType,
+                  examplesJson: needsExamples
+                      ? encodedExamples
+                      : existing.examplesJson,
+                  verbTensesExamplesJson: needsVerbTenses
+                      ? encodedVerbTenses
+                      : existing.verbTensesExamplesJson,
+                  aiConversation: needsConversation
+                      ? card.aiConversation
+                      : existing.aiConversation,
+                  studyStatus: needsStudyStatus
+                      ? importedStudyStatus
+                      : existing.studyStatus,
+                  masteryLevel: needsMastery
+                      ? importedMastery
+                      : existing.masteryLevel,
+                  reviewCount: needsReviews
+                      ? importedReviews
+                      : existing.reviewCount,
+                );
+                updatedCount++;
+                subDeckTouched = true;
+              } else {
+                skippedCount++;
+              }
+              continue;
+            }
+
+            if (!queuedInsertWords.add(wordKey)) {
+              skippedCount++;
+              continue;
+            }
+
+            toInsert.add(
+              FlashcardsCompanion.insert(
+                subDeckId: subDeckId,
+                word: trimmedWord,
+                phonetic: Value(card.phonetic.isEmpty ? null : card.phonetic),
+                meaningId: Value(card.meaningId),
+                wordType: Value(resolvedWordType),
+                partsOfSpeechJson: Value(encodedPos),
+                examplesJson: Value(encodedExamples),
+                verbTensesExamplesJson: Value(encodedVerbTenses),
+                aiConversation: Value(card.aiConversation),
+                masteryLevel: Value(importedMastery),
+                reviewCount: Value(importedReviews),
+                studyStatus: Value(importedStudyStatus),
+                createdAt: Value(now),
+              ),
+            );
+          }
+
+          if (toInsert.isNotEmpty) {
+            await batch((b) {
+              b.insertAll(flashcards, toInsert);
+            });
+            insertedCount += toInsert.length;
+            subDeckTouched = true;
+          }
+
+          if (subDeckTouched) {
+            await (update(flashcardSubDecks)
+                  ..where((t) => t.id.equals(subDeckId)))
+                .write(FlashcardSubDecksCompanion(updatedAt: Value(now)));
+            deckTouched = true;
+          }
+        }
+
+        if (deckTouched) {
+          await (update(flashcardDecks)..where((t) => t.id.equals(deckId)))
+              .write(FlashcardDecksCompanion(updatedAt: Value(now)));
+        }
+      }
+
+      return FlashcardImportResult(
+        deckCount: deckCount,
+        subDeckCount: subDeckCount,
+        insertedCount: insertedCount,
+        updatedCount: updatedCount,
+        skippedCount: skippedCount,
+      );
+    });
+  }
+
+  List<dynamic> _decodeJsonListSafe(String rawJson) {
+    final trimmed = rawJson.trim();
+    if (trimmed.isEmpty) return <dynamic>[];
+    try {
+      final decoded = jsonDecode(trimmed);
+      return decoded is List ? decoded : <dynamic>[];
+    } catch (_) {
+      return <dynamic>[];
+    }
+  }
+
+  String _encodeJsonListSafe(dynamic raw) {
+    if (raw is List) {
+      return jsonEncode(raw);
+    }
+    if (raw is String && raw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          return jsonEncode(decoded);
+        }
+      } catch (_) {}
+    }
+    return '[]';
+  }
+
+  bool _isJsonListEmpty(String rawJson) {
+    return _decodeJsonListSafe(rawJson).isEmpty;
+  }
+
+  List<_ParsedImportDeck> _parseImportDecks(Map<String, dynamic> json) {
+    final rawDecks = json['decks'];
+    if (rawDecks is List) {
+      final parsed = <_ParsedImportDeck>[];
+      for (final item in rawDecks) {
+        if (item is! Map) continue;
+        final deckMap = Map<String, dynamic>.from(item);
+        final name = (deckMap['name']?.toString() ?? '').trim();
+        if (name.isEmpty) continue;
+
+        final description = (deckMap['description']?.toString() ?? '').trim();
+        final rawSubDecks = deckMap['subDecks'];
+        final subDecks = <_ParsedImportSubDeck>[];
+
+        if (rawSubDecks is List) {
+          for (final subItem in rawSubDecks) {
+            if (subItem is! Map) continue;
+            final subMap = Map<String, dynamic>.from(subItem);
+            final subName = (subMap['name']?.toString() ?? '').trim();
+            if (subName.isEmpty) continue;
+            final subDesc = (subMap['description']?.toString() ?? '').trim();
+
+            final rawCards = subMap['cards'];
+            final cards = <_ParsedImportCard>[];
+            if (rawCards is List) {
+              for (final cardItem in rawCards) {
+                if (cardItem is! Map) continue;
+                final parsedCard = _ParsedImportCard.fromMap(
+                  Map<String, dynamic>.from(cardItem),
+                );
+                if (parsedCard != null) {
+                  cards.add(parsedCard);
+                }
+              }
+            }
+
+            subDecks.add(
+              _ParsedImportSubDeck(
+                name: subName,
+                description: subDesc.isEmpty ? null : subDesc,
+                cards: cards,
+              ),
+            );
+          }
+        }
+
+        parsed.add(
+          _ParsedImportDeck(
+            name: name,
+            description: description.isEmpty ? null : description,
+            subDecks: subDecks,
+          ),
+        );
+      }
+      return parsed;
+    }
+
+    // Backward-compatible fallback: full app backup payload.
+    final rawLegacyDecks = json['flashcardDecks'];
+    final rawLegacySubDecks = json['flashcardSubDecks'];
+    final rawLegacyCards = json['flashcards'];
+    if (rawLegacyDecks is! List ||
+        rawLegacySubDecks is! List ||
+        rawLegacyCards is! List) {
+      return const <_ParsedImportDeck>[];
+    }
+
+    final cardsByLegacySubDeckId = <int, List<_ParsedImportCard>>{};
+    for (final rawCard in rawLegacyCards) {
+      if (rawCard is! Map) continue;
+      final cardMap = Map<String, dynamic>.from(rawCard);
+      final legacySubDeckId = _asInt(cardMap['subDeckId']);
+      if (legacySubDeckId == null) continue;
+      final parsedCard = _ParsedImportCard.fromMap(cardMap);
+      if (parsedCard != null) {
+        cardsByLegacySubDeckId
+            .putIfAbsent(legacySubDeckId, () => <_ParsedImportCard>[])
+            .add(parsedCard);
+      }
+    }
+
+    final subDecksByLegacyDeckId = <int, List<_ParsedImportSubDeck>>{};
+    for (final rawSub in rawLegacySubDecks) {
+      if (rawSub is! Map) continue;
+      final subMap = Map<String, dynamic>.from(rawSub);
+      final legacyId = _asInt(subMap['id']);
+      final legacyDeckId = _asInt(subMap['deckId']);
+      final subName = (subMap['name']?.toString() ?? '').trim();
+      if (legacyId == null || legacyDeckId == null || subName.isEmpty) {
+        continue;
+      }
+      final subDesc = (subMap['description']?.toString() ?? '').trim();
+      subDecksByLegacyDeckId
+          .putIfAbsent(legacyDeckId, () => <_ParsedImportSubDeck>[])
+          .add(
+            _ParsedImportSubDeck(
+              name: subName,
+              description: subDesc.isEmpty ? null : subDesc,
+              cards: cardsByLegacySubDeckId[legacyId] ??
+                  const <_ParsedImportCard>[],
+            ),
+          );
+    }
+
+    final parsed = <_ParsedImportDeck>[];
+    for (final rawDeck in rawLegacyDecks) {
+      if (rawDeck is! Map) continue;
+      final deckMap = Map<String, dynamic>.from(rawDeck);
+      final legacyId = _asInt(deckMap['id']);
+      final name = (deckMap['name']?.toString() ?? '').trim();
+      if (legacyId == null || name.isEmpty) continue;
+      final desc = (deckMap['description']?.toString() ?? '').trim();
+      parsed.add(
+        _ParsedImportDeck(
+          name: name,
+          description: desc.isEmpty ? null : desc,
+          subDecks:
+              subDecksByLegacyDeckId[legacyId] ??
+              const <_ParsedImportSubDeck>[],
+        ),
+      );
+    }
+    return parsed;
+  }
+
+  static int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim());
+    return null;
+  }
+}
+
+class _ParsedImportDeck {
+  const _ParsedImportDeck({
+    required this.name,
+    required this.description,
+    required this.subDecks,
+  });
+
+  final String name;
+  final String? description;
+  final List<_ParsedImportSubDeck> subDecks;
+}
+
+class _ParsedImportSubDeck {
+  const _ParsedImportSubDeck({
+    required this.name,
+    required this.description,
+    required this.cards,
+  });
+
+  final String name;
+  final String? description;
+  final List<_ParsedImportCard> cards;
+}
+
+class _ParsedImportCard {
+  const _ParsedImportCard({
+    required this.word,
+    required this.phonetic,
+    required this.meaningId,
+    required this.wordType,
+    required this.partsOfSpeech,
+    required this.examples,
+    required this.verbTensesExamples,
+    required this.aiConversation,
+    required this.masteryLevel,
+    required this.reviewCount,
+    required this.studyStatus,
+  });
+
+  final String word;
+  final String phonetic;
+  final String meaningId;
+  final String wordType;
+  final List<String> partsOfSpeech;
+  final dynamic examples;
+  final dynamic verbTensesExamples;
+  final String aiConversation;
+  final int masteryLevel;
+  final int reviewCount;
+  final int studyStatus;
+
+  static _ParsedImportCard? fromMap(Map<String, dynamic> map) {
+    final word = (map['word']?.toString() ?? '').trim();
+    if (word.isEmpty) return null;
+
+    final rawPos = map['partsOfSpeech'] ?? map['partsOfSpeechJson'];
+    final posList = <String>[];
+    if (rawPos is List) {
+      for (final item in rawPos) {
+        final text = item?.toString().trim() ?? '';
+        if (text.isNotEmpty) posList.add(text);
+      }
+    } else if (rawPos is String && rawPos.trim().isNotEmpty) {
+      posList.addAll(FlashcardPosHelper.decodePartsOfSpeech(rawPos));
+    }
+
+    return _ParsedImportCard(
+      word: word,
+      phonetic: (map['phonetic']?.toString() ?? '').trim(),
+      meaningId: (map['meaningId']?.toString() ?? '').trim(),
+      wordType: (map['wordType']?.toString() ?? 'non_verb').trim(),
+      partsOfSpeech: posList,
+      examples: map['examples'] ?? map['examplesJson'],
+      verbTensesExamples:
+          map['verbTensesExamples'] ?? map['verbTensesExamplesJson'],
+      aiConversation: (map['aiConversation']?.toString() ?? '').trim(),
+      masteryLevel: FlashcardDao._asInt(map['masteryLevel']) ?? 0,
+      reviewCount: FlashcardDao._asInt(map['reviewCount']) ?? 0,
+      studyStatus: FlashcardDao._asInt(map['studyStatus']) ?? 0,
+    );
   }
 }
 

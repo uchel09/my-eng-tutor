@@ -1,6 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../data/local/app_database.dart';
 import '../../../data/local/daos/flashcard_dao.dart';
@@ -36,6 +42,8 @@ class FlashcardsController extends GetxController {
   final RxString packStatusText = ''.obs;
   final RxnString packErrorMessage = RxnString();
   final RxnString activePackLevelFilter = RxnString();
+  final RxBool isExportingFlashcards = false.obs;
+  final RxBool isImportingFlashcards = false.obs;
 
   StreamSubscription<List<DeckWithStats>>? _decksSub;
   bool _pauseRequested = false;
@@ -415,6 +423,149 @@ class FlashcardsController extends GetxController {
         lower.contains('json') ||
         lower.contains('tidak mengembalikan') ||
         lower.contains('kosakata');
+  }
+
+  /// Exports all Decks, Sub-Decks, and Flashcards to a portable JSON file
+  /// and opens the platform share sheet.
+  Future<void> exportFlashcards() async {
+    if (isExportingFlashcards.value || _isClosed) return;
+    isExportingFlashcards.value = true;
+    try {
+      final payload = await repository.exportFlashcardsJson();
+      final exportedDecks = payload['decks'];
+      if (exportedDecks is! List || exportedDecks.isEmpty) {
+        showFlashcardSnackbar(
+          title: 'Belum Ada Flashcard',
+          message:
+              'Buat atau unduh minimal 1 deck sebelum mengekspor file JSON.',
+          isError: true,
+        );
+        return;
+      }
+
+      final encoded = const JsonEncoder.withIndent('  ').convert(payload);
+      final timestamp = _formatFileTimestamp(DateTime.now());
+      final tempDir = await getTemporaryDirectory();
+      final file = File(
+        '${tempDir.path}${Platform.pathSeparator}my_english_tutor_flashcards_$timestamp.json',
+      );
+      await file.writeAsString(encoded, encoding: utf8);
+
+      await SharePlus.instance.share(
+        ShareParams(
+          files: <XFile>[XFile(file.path, mimeType: 'application/json')],
+          text: 'Export Flashcards My English Tutor ($timestamp)',
+          subject: 'My English Tutor Flashcards',
+        ),
+      );
+    } catch (error) {
+      showFlashcardSnackbar(
+        title: 'Gagal Export Flashcard',
+        message: 'Tidak dapat mengekspor flashcard: $error',
+        isError: true,
+      );
+    } finally {
+      isExportingFlashcards.value = false;
+    }
+  }
+
+  /// Picks a Flashcards `.json` file, confirms merge import, and merges new
+  /// decks, sub-decks, and cards without overwriting existing study progress.
+  Future<void> importFlashcards() async {
+    if (isImportingFlashcards.value || _isClosed) return;
+    isImportingFlashcards.value = true;
+    try {
+      final picked = await FilePicker.pickFile(
+        dialogTitle: 'Pilih File Flashcard JSON',
+        type: FileType.custom,
+        allowedExtensions: const <String>['json'],
+      );
+      if (picked == null) return;
+
+      final bytes = await picked.readAsBytes();
+      final rawJson = utf8.decode(bytes);
+      final decoded = jsonDecode(rawJson);
+
+      if (decoded is! Map<String, dynamic> ||
+          !_hasRecognizableFlashcardPayload(decoded)) {
+        throw const FormatException(
+          'Format file Flashcard JSON tidak valid. Pastikan file berisi daftar decks atau backup flashcard.',
+        );
+      }
+
+      final confirmed = await Get.dialog<bool>(
+        AlertDialog(
+          title: const Text('Import Flashcard JSON?'),
+          content: const Text(
+            'Kosakata baru akan ditambahkan ke Deck & Sub-Deck terkait. Kata dan progress belajar yang sudah Anda miliki tetap aman dan tidak dihapus.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back<bool>(result: false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Get.back<bool>(result: true),
+              child: const Text('Import'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+      await importFlashcardsPayload(decoded);
+    } on FormatException catch (error) {
+      showFlashcardSnackbar(
+        title: 'File Flashcard Tidak Valid',
+        message: error.message,
+        isError: true,
+      );
+    } catch (error) {
+      showFlashcardSnackbar(
+        title: 'Gagal Import Flashcard',
+        message: 'Tidak dapat mengimpor file flashcard: $error',
+        isError: true,
+      );
+    } finally {
+      isImportingFlashcards.value = false;
+    }
+  }
+
+  /// Merges [payload] directly into local Drift tables and shows a summary snackbar.
+  Future<FlashcardImportResult> importFlashcardsPayload(
+    Map<String, dynamic> payload,
+  ) async {
+    final result = await repository.importFlashcardsJson(payload);
+    showFlashcardSnackbar(
+      title: 'Import Flashcard Berhasil',
+      message:
+          '${result.insertedCount} kata baru ditambahkan '
+          '(${result.updatedCount} diperbarui, ${result.skippedCount} sudah ada).',
+    );
+    return result;
+  }
+
+  bool _hasRecognizableFlashcardPayload(Map<String, dynamic> json) {
+    final decks = json['decks'];
+    if (decks is List && decks.isNotEmpty) {
+      return true;
+    }
+    final legacyDecks = json['flashcardDecks'];
+    final legacySubDecks = json['flashcardSubDecks'];
+    final legacyCards = json['flashcards'];
+    return legacyDecks is List &&
+        legacyDecks.isNotEmpty &&
+        legacySubDecks is List &&
+        legacyCards is List;
+  }
+
+  String _formatFileTimestamp(DateTime now) {
+    return '${now.year}'
+        '${now.month.toString().padLeft(2, '0')}'
+        '${now.day.toString().padLeft(2, '0')}_'
+        '${now.hour.toString().padLeft(2, '0')}'
+        '${now.minute.toString().padLeft(2, '0')}'
+        '${now.second.toString().padLeft(2, '0')}';
   }
 
   @override

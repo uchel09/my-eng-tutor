@@ -88,14 +88,48 @@ class FlashcardsView extends GetView<FlashcardsController> {
             icon: const Icon(Icons.cloud_download_outlined, size: 18),
             label: const Text('Unduh Paket'),
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: IconButton(
-              tooltip: 'Buat Deck',
-              onPressed: () => _openCreateDeckDialog(context),
-              icon: const Icon(Icons.add_rounded),
-            ),
+          IconButton(
+            tooltip: 'Buat Deck',
+            onPressed: () => _openCreateDeckDialog(context),
+            icon: const Icon(Icons.add_rounded),
           ),
+          Obx(() {
+            final isBusy =
+                controller.isImportingFlashcards.value ||
+                controller.isExportingFlashcards.value;
+            return PopupMenuButton<String>(
+              tooltip: 'Opsi Flashcard',
+              enabled: !isBusy,
+              icon: const Icon(Icons.more_vert_rounded),
+              onSelected: (value) {
+                if (value == 'import') {
+                  controller.importFlashcards();
+                } else if (value == 'export') {
+                  controller.exportFlashcards();
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem<String>(
+                  value: 'import',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.file_upload_outlined),
+                    title: Text('Import Flashcard JSON'),
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'export',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.file_download_outlined),
+                    title: Text('Export Flashcard JSON'),
+                  ),
+                ),
+              ],
+            );
+          }),
         ],
       ),
       floatingActionButton: Obx(() {
@@ -164,6 +198,14 @@ class FlashcardsView extends GetView<FlashcardsController> {
                           size: 18,
                         ),
                         label: const Text('Unduh Paket Kosakata'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => controller.importFlashcards(),
+                        icon: const Icon(
+                          Icons.file_upload_outlined,
+                          size: 18,
+                        ),
+                        label: const Text('Import dari File JSON'),
                       ),
                     ],
                   ),
