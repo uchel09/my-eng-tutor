@@ -23,17 +23,41 @@ class FlashcardStudyArgs {
 class FlashcardPracticeDraft {
   const FlashcardPracticeDraft({
     required this.wordType,
+    this.partsOfSpeech = const <String>[],
     required this.phonetic,
     required this.meaningId,
     required this.examples,
+    this.verbTensesExamples = const <FlashcardExampleItem>[],
     required this.conversation,
   });
 
   final String wordType;
+  final List<String> partsOfSpeech;
   final String phonetic;
   final String meaningId;
   final List<FlashcardExampleItem> examples;
+  final List<FlashcardExampleItem> verbTensesExamples;
   final String conversation;
+
+  FlashcardPracticeDraft copyWith({
+    String? wordType,
+    List<String>? partsOfSpeech,
+    String? phonetic,
+    String? meaningId,
+    List<FlashcardExampleItem>? examples,
+    List<FlashcardExampleItem>? verbTensesExamples,
+    String? conversation,
+  }) {
+    return FlashcardPracticeDraft(
+      wordType: wordType ?? this.wordType,
+      partsOfSpeech: partsOfSpeech ?? this.partsOfSpeech,
+      phonetic: phonetic ?? this.phonetic,
+      meaningId: meaningId ?? this.meaningId,
+      examples: examples ?? this.examples,
+      verbTensesExamples: verbTensesExamples ?? this.verbTensesExamples,
+      conversation: conversation ?? this.conversation,
+    );
+  }
 }
 
 /// Typed navigation arguments for the Flashcard AI Quiz screen.

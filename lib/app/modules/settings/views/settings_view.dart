@@ -302,14 +302,14 @@ class SettingsView extends GetView<SettingsController> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Flashcard TTS Model (Suara AI REST)',
+              'Flashcard TTS Model (Live API)',
               style: theme.textTheme.labelLarge?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 4),
             Text(
-              'Suara AI diputar via REST & cache RAM. Jika offline, API key kosong, atau kuota habis, otomatis memakai suara perangkat (flutter_tts).',
+              'Suara AI yang sudah pernah diputar (kata, mode lambat, contoh kalimat, dialog & kuis) otomatis disimpan sebagai file audio .wav di folder aplikasi agar tetap aman saat aplikasi ditutup, hemat kuota, bisa diputar offline, dan ikut terhapus bersih saat aplikasi di-uninstall. Otomatis beralih ke suara perangkat (flutter_tts) jika offline atau kuota habis.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -354,6 +354,96 @@ class SettingsView extends GetView<SettingsController> {
                 label: const Text('Simpan Model Kustom'),
               ),
             ),
+            const SizedBox(height: 8),
+            Obx(
+              () => SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: controller.isTestingFlashcardTts.value
+                      ? null
+                      : controller.testFlashcardTts,
+                  icon: controller.isTestingFlashcardTts.value
+                      ? const _SmallButtonSpinner()
+                      : const Icon(Icons.volume_up_rounded),
+                  label: const Text('Tes Suara Flashcard AI'),
+                ),
+              ),
+            ),
+            Obx(() {
+              final message = controller.flashcardTtsTestMessage.value;
+              final isSuccess = controller.flashcardTtsTestSuccess.value;
+              if (message == null || isSuccess == null) {
+                return const SizedBox.shrink();
+              }
+              return Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: _StatusBanner(
+                  message: message,
+                  isSuccess: isSuccess,
+                ),
+              );
+            }),
+            const SizedBox(height: 12),
+            Obx(() {
+              final count = controller.savedAudioFileCount.value;
+              final isBusy = controller.isClearingSavedAudio.value;
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.45,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.audio_file_outlined,
+                          size: 18,
+                          color: colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            controller.savedAudioSummaryText,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Tersimpan di folder aplikasi (my_english_tutor_audio) untuk pemutaran offline.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: isBusy || count == 0
+                            ? null
+                            : controller.clearSavedAudioFiles,
+                        icon: isBusy
+                            ? const _SmallButtonSpinner()
+                            : const Icon(Icons.delete_outline_rounded),
+                        label: const Text('Hapus Audio Tersimpan'),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
             const Divider(height: 20),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,

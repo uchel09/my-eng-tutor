@@ -96,7 +96,7 @@ class AppSettings extends Table {
   TextColumn get flashcardModel =>
       text().withDefault(const Constant('gemini-3.8-flash'))();
   TextColumn get flashcardTtsModel =>
-      text().withDefault(const Constant('gemini-2.5-flash-preview-tts'))();
+      text().withDefault(const Constant('gemini-3.8-live'))();
   BoolColumn get bilingualBeginnerSupport =>
       boolean().withDefault(const Constant(true))();
   BoolColumn get darkMode => boolean().withDefault(const Constant(false))();
@@ -144,9 +144,13 @@ class Flashcards extends Table {
   TextColumn get phonetic => text().nullable()();
   TextColumn get meaningId => text().withDefault(const Constant(''))();
   TextColumn get wordType => text().withDefault(const Constant('non_verb'))();
+  TextColumn get partsOfSpeechJson => text().withDefault(const Constant('[]'))();
   TextColumn get examplesJson => text().withDefault(const Constant('[]'))();
+  TextColumn get verbTensesExamplesJson =>
+      text().withDefault(const Constant('[]'))();
   TextColumn get aiConversation => text().withDefault(const Constant(''))();
   IntColumn get masteryLevel => integer().withDefault(const Constant(0))();
+  IntColumn get studyStatus => integer().withDefault(const Constant(0))();
   IntColumn get reviewCount => integer().withDefault(const Constant(0))();
   DateTimeColumn get lastReviewedAt => dateTime().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();

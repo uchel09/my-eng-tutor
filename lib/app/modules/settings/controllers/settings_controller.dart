@@ -52,6 +52,13 @@ class SettingsController extends GetxController {
   final RxnBool modelFetchSuccess = RxnBool();
   final RxnString audioTestMessage = RxnString();
   final RxnBool audioTestSuccess = RxnBool();
+  final RxBool isTestingFlashcardTts = false.obs;
+  final RxnString flashcardTtsTestMessage = RxnString();
+  final RxnBool flashcardTtsTestSuccess = RxnBool();
+  final RxInt savedAudioFileCount = 0.obs;
+  final RxInt savedAudioTotalBytes = 0.obs;
+  final RxBool isLoadingAudioStats = false.obs;
+  final RxBool isClearingSavedAudio = false.obs;
 
   final RxList<String> dynamicLiveModels = <String>[].obs;
   final RxList<String> dynamicScoringModels = <String>[].obs;
@@ -87,6 +94,7 @@ class SettingsController extends GetxController {
     });
 
     _settingsSub = repository.watchSettings().listen(_onSettingsChanged);
+    unawaited(refreshSavedAudioStats());
   }
 
   void _onSettingsChanged(AppSetting data) {
@@ -252,9 +260,20 @@ class SettingsController extends GetxController {
 
     try {
       final available = await repository.fetchAvailableModels(apiKey: apiKey);
+      final filteredLiveVoiceModels = available.liveModels
+          .where((id) {
+            final lower = id.toLowerCase();
+            return !lower.contains('transcribe') &&
+                !lower.contains('translate');
+          })
+          .toList(growable: false);
+      final liveTtsModels = filteredLiveVoiceModels.isNotEmpty
+          ? filteredLiveVoiceModels
+          : available.liveModels;
+
       dynamicLiveModels.assignAll(available.liveModels);
       dynamicScoringModels.assignAll(available.scoringModels);
-      dynamicTtsModels.assignAll(available.ttsModels);
+      dynamicTtsModels.assignAll(liveTtsModels);
 
       final currentLive = liveModelController.text.trim();
       final currentScoring = scoringModelController.text.trim();
@@ -286,9 +305,9 @@ class SettingsController extends GetxController {
       }
 
       String? updatedTts;
-      if (available.ttsModels.isNotEmpty &&
-          (currentTts.isEmpty || !available.ttsModels.contains(currentTts))) {
-        updatedTts = available.ttsModels.first;
+      if (liveTtsModels.isNotEmpty &&
+          (currentTts.isEmpty || !liveTtsModels.contains(currentTts))) {
+        updatedTts = liveTtsModels.first;
         flashcardTtsModelController.text = updatedTts;
       }
 
@@ -319,7 +338,7 @@ class SettingsController extends GetxController {
 
       final liveCount = available.liveModels.length;
       final scoringCount = available.scoringModels.length;
-      final ttsCount = available.ttsModels.length;
+      final ttsCount = liveTtsModels.length;
       if (liveCount == 0 && scoringCount == 0 && ttsCount == 0) {
         modelFetchSuccess.value = false;
         modelFetchMessage.value =
@@ -334,7 +353,7 @@ class SettingsController extends GetxController {
             ? ' Model lama otomatis disesuaikan ke versi aktif.'
             : '';
         modelFetchMessage.value =
-            'Ditemukan $scoringCount model Scoring/Flashcard, $liveCount model Live & $ttsCount model TTS.$replacedNote';
+            'Ditemukan $scoringCount model Scoring/Flashcard, $liveCount model Live & $ttsCount model Live TTS Flashcard.$replacedNote';
       }
 
       if (showSnackFeedback && modelFetchMessage.value != null) {
@@ -428,6 +447,124 @@ class SettingsController extends GetxController {
       apiTestResultMessage.value = 'Gagal menguji koneksi Gemini: $error';
     } finally {
       isTestingApi.value = false;
+    }
+  }
+
+  /// Directly tests Flashcard AI voice synthesis via the configured Live TTS model without silent fallback.
+  Future<void> testFlashcardTts() async {
+    if (isTestingFlashcardTts.value) return;
+
+    flashcardTtsTestMessage.value = null;
+    flashcardTtsTestSuccess.value = null;
+
+    final apiKey = apiKeyController.text.trim();
+    if (apiKey.isEmpty) {
+      flashcardTtsTestSuccess.value = false;
+      flashcardTtsTestMessage.value =
+          'Gagal memutar suara AI: API key Gemini masih kosong.';
+      return;
+    }
+
+    var model = flashcardTtsModelController.text.trim();
+    if (model.isEmpty) {
+      model = GeminiConstants.defaultTtsModel;
+      flashcardTtsModelController.text = model;
+    }
+
+    isTestingFlashcardTts.value = true;
+    try {
+      await repository.updateSettings(
+        AppSettingsCompanion(
+          apiKey: drift.Value(apiKey),
+          flashcardTtsModel: drift.Value(model),
+        ),
+      );
+      _resetTtsCooldownIfRegistered();
+
+      final pcmBytes = await repository.synthesizeSpeechPcm24k(
+        text: 'Hello, your flashcard AI voice is ready.',
+      );
+      if (pcmBytes.isEmpty) {
+        flashcardTtsTestSuccess.value = false;
+        flashcardTtsTestMessage.value =
+            'Gagal memutar suara AI: Audio PCM dari model "$model" kosong.';
+        return;
+      }
+
+      await audioService.playPcm24kBuffer(pcmBytes);
+      flashcardTtsTestSuccess.value = true;
+      flashcardTtsTestMessage.value =
+          'Berhasil! Suara AI berbunyi via model "$model" (${pcmBytes.length} bytes).';
+    } catch (error) {
+      flashcardTtsTestSuccess.value = false;
+      flashcardTtsTestMessage.value = 'Gagal memutar suara AI: $error';
+    } finally {
+      isTestingFlashcardTts.value = false;
+    }
+  }
+
+  /// Human-readable summary of permanently saved `.wav` flashcard audio files.
+  String get savedAudioSummaryText =>
+      'Audio tersimpan: ${savedAudioFileCount.value} file (${formatSavedAudioBytes(savedAudioTotalBytes.value)})';
+
+  /// Formats byte count cleanly using Indonesian comma decimals (e.g. `5,4 MB`).
+  static String formatSavedAudioBytes(int bytes) {
+    if (bytes <= 0) return '0 B';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) {
+      final kb = bytes / 1024;
+      final formatted = kb < 10
+          ? kb.toStringAsFixed(1).replaceAll('.', ',')
+          : kb.toStringAsFixed(0);
+      return '$formatted KB';
+    }
+    final mb = bytes / (1024 * 1024);
+    return '${mb.toStringAsFixed(1).replaceAll('.', ',')} MB';
+  }
+
+  /// Refreshes file count and total size of persisted `.wav` TTS audio files.
+  Future<void> refreshSavedAudioStats() async {
+    if (!Get.isRegistered<TtsService>()) {
+      savedAudioFileCount.value = 0;
+      savedAudioTotalBytes.value = 0;
+      return;
+    }
+    isLoadingAudioStats.value = true;
+    try {
+      final stats = await Get.find<TtsService>().getSavedAudioStats();
+      savedAudioFileCount.value = stats.fileCount;
+      savedAudioTotalBytes.value = stats.totalBytes;
+    } catch (error) {
+      debugPrint('SettingsController.refreshSavedAudioStats error: $error');
+    } finally {
+      isLoadingAudioStats.value = false;
+    }
+  }
+
+  /// Deletes all saved `.wav` TTS files from app storage and refreshes stats.
+  Future<void> clearSavedAudioFiles() async {
+    if (isClearingSavedAudio.value) return;
+    isClearingSavedAudio.value = true;
+    try {
+      final previousCount = savedAudioFileCount.value;
+      if (Get.isRegistered<TtsService>()) {
+        await Get.find<TtsService>().clearSavedAudioFiles();
+      }
+      await refreshSavedAudioStats();
+      _showSnack(
+        title: 'Audio Tersimpan Dihapus',
+        message: previousCount > 0
+            ? '$previousCount file audio .wav berhasil dihapus.'
+            : 'Penyimpanan audio flashcard sudah bersih.',
+      );
+    } catch (error) {
+      _showSnack(
+        title: 'Gagal Menghapus Audio',
+        message: 'Tidak dapat menghapus file audio tersimpan: $error',
+        isError: true,
+      );
+    } finally {
+      isClearingSavedAudio.value = false;
     }
   }
 
@@ -704,6 +841,7 @@ class SettingsController extends GetxController {
     required String message,
     bool isError = false,
   }) {
+    if (Get.context == null) return;
     final colorScheme = Get.theme.colorScheme;
     Get.snackbar(
       title,

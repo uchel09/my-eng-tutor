@@ -3057,7 +3057,7 @@ class $AppSettingsTable extends AppSettings
         false,
         type: DriftSqlType.string,
         requiredDuringInsert: false,
-        defaultValue: const Constant('gemini-2.5-flash-preview-tts'),
+        defaultValue: const Constant('gemini-3.8-live'),
       );
   static const VerificationMeta _bilingualBeginnerSupportMeta =
       const VerificationMeta('bilingualBeginnerSupport');
@@ -4513,6 +4513,19 @@ class $FlashcardsTable extends Flashcards
     requiredDuringInsert: false,
     defaultValue: const Constant('non_verb'),
   );
+  static const VerificationMeta _partsOfSpeechJsonMeta = const VerificationMeta(
+    'partsOfSpeechJson',
+  );
+  @override
+  late final GeneratedColumn<String> partsOfSpeechJson =
+      GeneratedColumn<String>(
+        'parts_of_speech_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      );
   static const VerificationMeta _examplesJsonMeta = const VerificationMeta(
     'examplesJson',
   );
@@ -4525,6 +4538,18 @@ class $FlashcardsTable extends Flashcards
     requiredDuringInsert: false,
     defaultValue: const Constant('[]'),
   );
+  static const VerificationMeta _verbTensesExamplesJsonMeta =
+      const VerificationMeta('verbTensesExamplesJson');
+  @override
+  late final GeneratedColumn<String> verbTensesExamplesJson =
+      GeneratedColumn<String>(
+        'verb_tenses_examples_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      );
   static const VerificationMeta _aiConversationMeta = const VerificationMeta(
     'aiConversation',
   );
@@ -4543,6 +4568,18 @@ class $FlashcardsTable extends Flashcards
   @override
   late final GeneratedColumn<int> masteryLevel = GeneratedColumn<int>(
     'mastery_level',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _studyStatusMeta = const VerificationMeta(
+    'studyStatus',
+  );
+  @override
+  late final GeneratedColumn<int> studyStatus = GeneratedColumn<int>(
+    'study_status',
     aliasedName,
     false,
     type: DriftSqlType.int,
@@ -4593,9 +4630,12 @@ class $FlashcardsTable extends Flashcards
     phonetic,
     meaningId,
     wordType,
+    partsOfSpeechJson,
     examplesJson,
+    verbTensesExamplesJson,
     aiConversation,
     masteryLevel,
+    studyStatus,
     reviewCount,
     lastReviewedAt,
     createdAt,
@@ -4649,12 +4689,30 @@ class $FlashcardsTable extends Flashcards
         wordType.isAcceptableOrUnknown(data['word_type']!, _wordTypeMeta),
       );
     }
+    if (data.containsKey('parts_of_speech_json')) {
+      context.handle(
+        _partsOfSpeechJsonMeta,
+        partsOfSpeechJson.isAcceptableOrUnknown(
+          data['parts_of_speech_json']!,
+          _partsOfSpeechJsonMeta,
+        ),
+      );
+    }
     if (data.containsKey('examples_json')) {
       context.handle(
         _examplesJsonMeta,
         examplesJson.isAcceptableOrUnknown(
           data['examples_json']!,
           _examplesJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('verb_tenses_examples_json')) {
+      context.handle(
+        _verbTensesExamplesJsonMeta,
+        verbTensesExamplesJson.isAcceptableOrUnknown(
+          data['verb_tenses_examples_json']!,
+          _verbTensesExamplesJsonMeta,
         ),
       );
     }
@@ -4673,6 +4731,15 @@ class $FlashcardsTable extends Flashcards
         masteryLevel.isAcceptableOrUnknown(
           data['mastery_level']!,
           _masteryLevelMeta,
+        ),
+      );
+    }
+    if (data.containsKey('study_status')) {
+      context.handle(
+        _studyStatusMeta,
+        studyStatus.isAcceptableOrUnknown(
+          data['study_status']!,
+          _studyStatusMeta,
         ),
       );
     }
@@ -4733,9 +4800,17 @@ class $FlashcardsTable extends Flashcards
         DriftSqlType.string,
         data['${effectivePrefix}word_type'],
       )!,
+      partsOfSpeechJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}parts_of_speech_json'],
+      )!,
       examplesJson: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}examples_json'],
+      )!,
+      verbTensesExamplesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}verb_tenses_examples_json'],
       )!,
       aiConversation: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -4744,6 +4819,10 @@ class $FlashcardsTable extends Flashcards
       masteryLevel: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}mastery_level'],
+      )!,
+      studyStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}study_status'],
       )!,
       reviewCount: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
@@ -4773,9 +4852,12 @@ class Flashcard extends DataClass implements Insertable<Flashcard> {
   final String? phonetic;
   final String meaningId;
   final String wordType;
+  final String partsOfSpeechJson;
   final String examplesJson;
+  final String verbTensesExamplesJson;
   final String aiConversation;
   final int masteryLevel;
+  final int studyStatus;
   final int reviewCount;
   final DateTime? lastReviewedAt;
   final DateTime createdAt;
@@ -4786,9 +4868,12 @@ class Flashcard extends DataClass implements Insertable<Flashcard> {
     this.phonetic,
     required this.meaningId,
     required this.wordType,
+    required this.partsOfSpeechJson,
     required this.examplesJson,
+    required this.verbTensesExamplesJson,
     required this.aiConversation,
     required this.masteryLevel,
+    required this.studyStatus,
     required this.reviewCount,
     this.lastReviewedAt,
     required this.createdAt,
@@ -4804,9 +4889,12 @@ class Flashcard extends DataClass implements Insertable<Flashcard> {
     }
     map['meaning_id'] = Variable<String>(meaningId);
     map['word_type'] = Variable<String>(wordType);
+    map['parts_of_speech_json'] = Variable<String>(partsOfSpeechJson);
     map['examples_json'] = Variable<String>(examplesJson);
+    map['verb_tenses_examples_json'] = Variable<String>(verbTensesExamplesJson);
     map['ai_conversation'] = Variable<String>(aiConversation);
     map['mastery_level'] = Variable<int>(masteryLevel);
+    map['study_status'] = Variable<int>(studyStatus);
     map['review_count'] = Variable<int>(reviewCount);
     if (!nullToAbsent || lastReviewedAt != null) {
       map['last_reviewed_at'] = Variable<DateTime>(lastReviewedAt);
@@ -4825,9 +4913,12 @@ class Flashcard extends DataClass implements Insertable<Flashcard> {
           : Value(phonetic),
       meaningId: Value(meaningId),
       wordType: Value(wordType),
+      partsOfSpeechJson: Value(partsOfSpeechJson),
       examplesJson: Value(examplesJson),
+      verbTensesExamplesJson: Value(verbTensesExamplesJson),
       aiConversation: Value(aiConversation),
       masteryLevel: Value(masteryLevel),
+      studyStatus: Value(studyStatus),
       reviewCount: Value(reviewCount),
       lastReviewedAt: lastReviewedAt == null && nullToAbsent
           ? const Value.absent()
@@ -4848,9 +4939,14 @@ class Flashcard extends DataClass implements Insertable<Flashcard> {
       phonetic: serializer.fromJson<String?>(json['phonetic']),
       meaningId: serializer.fromJson<String>(json['meaningId']),
       wordType: serializer.fromJson<String>(json['wordType']),
+      partsOfSpeechJson: serializer.fromJson<String>(json['partsOfSpeechJson']),
       examplesJson: serializer.fromJson<String>(json['examplesJson']),
+      verbTensesExamplesJson: serializer.fromJson<String>(
+        json['verbTensesExamplesJson'],
+      ),
       aiConversation: serializer.fromJson<String>(json['aiConversation']),
       masteryLevel: serializer.fromJson<int>(json['masteryLevel']),
+      studyStatus: serializer.fromJson<int>(json['studyStatus']),
       reviewCount: serializer.fromJson<int>(json['reviewCount']),
       lastReviewedAt: serializer.fromJson<DateTime?>(json['lastReviewedAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -4866,9 +4962,14 @@ class Flashcard extends DataClass implements Insertable<Flashcard> {
       'phonetic': serializer.toJson<String?>(phonetic),
       'meaningId': serializer.toJson<String>(meaningId),
       'wordType': serializer.toJson<String>(wordType),
+      'partsOfSpeechJson': serializer.toJson<String>(partsOfSpeechJson),
       'examplesJson': serializer.toJson<String>(examplesJson),
+      'verbTensesExamplesJson': serializer.toJson<String>(
+        verbTensesExamplesJson,
+      ),
       'aiConversation': serializer.toJson<String>(aiConversation),
       'masteryLevel': serializer.toJson<int>(masteryLevel),
+      'studyStatus': serializer.toJson<int>(studyStatus),
       'reviewCount': serializer.toJson<int>(reviewCount),
       'lastReviewedAt': serializer.toJson<DateTime?>(lastReviewedAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -4882,9 +4983,12 @@ class Flashcard extends DataClass implements Insertable<Flashcard> {
     Value<String?> phonetic = const Value.absent(),
     String? meaningId,
     String? wordType,
+    String? partsOfSpeechJson,
     String? examplesJson,
+    String? verbTensesExamplesJson,
     String? aiConversation,
     int? masteryLevel,
+    int? studyStatus,
     int? reviewCount,
     Value<DateTime?> lastReviewedAt = const Value.absent(),
     DateTime? createdAt,
@@ -4895,9 +4999,13 @@ class Flashcard extends DataClass implements Insertable<Flashcard> {
     phonetic: phonetic.present ? phonetic.value : this.phonetic,
     meaningId: meaningId ?? this.meaningId,
     wordType: wordType ?? this.wordType,
+    partsOfSpeechJson: partsOfSpeechJson ?? this.partsOfSpeechJson,
     examplesJson: examplesJson ?? this.examplesJson,
+    verbTensesExamplesJson:
+        verbTensesExamplesJson ?? this.verbTensesExamplesJson,
     aiConversation: aiConversation ?? this.aiConversation,
     masteryLevel: masteryLevel ?? this.masteryLevel,
+    studyStatus: studyStatus ?? this.studyStatus,
     reviewCount: reviewCount ?? this.reviewCount,
     lastReviewedAt: lastReviewedAt.present
         ? lastReviewedAt.value
@@ -4912,15 +5020,24 @@ class Flashcard extends DataClass implements Insertable<Flashcard> {
       phonetic: data.phonetic.present ? data.phonetic.value : this.phonetic,
       meaningId: data.meaningId.present ? data.meaningId.value : this.meaningId,
       wordType: data.wordType.present ? data.wordType.value : this.wordType,
+      partsOfSpeechJson: data.partsOfSpeechJson.present
+          ? data.partsOfSpeechJson.value
+          : this.partsOfSpeechJson,
       examplesJson: data.examplesJson.present
           ? data.examplesJson.value
           : this.examplesJson,
+      verbTensesExamplesJson: data.verbTensesExamplesJson.present
+          ? data.verbTensesExamplesJson.value
+          : this.verbTensesExamplesJson,
       aiConversation: data.aiConversation.present
           ? data.aiConversation.value
           : this.aiConversation,
       masteryLevel: data.masteryLevel.present
           ? data.masteryLevel.value
           : this.masteryLevel,
+      studyStatus: data.studyStatus.present
+          ? data.studyStatus.value
+          : this.studyStatus,
       reviewCount: data.reviewCount.present
           ? data.reviewCount.value
           : this.reviewCount,
@@ -4940,9 +5057,12 @@ class Flashcard extends DataClass implements Insertable<Flashcard> {
           ..write('phonetic: $phonetic, ')
           ..write('meaningId: $meaningId, ')
           ..write('wordType: $wordType, ')
+          ..write('partsOfSpeechJson: $partsOfSpeechJson, ')
           ..write('examplesJson: $examplesJson, ')
+          ..write('verbTensesExamplesJson: $verbTensesExamplesJson, ')
           ..write('aiConversation: $aiConversation, ')
           ..write('masteryLevel: $masteryLevel, ')
+          ..write('studyStatus: $studyStatus, ')
           ..write('reviewCount: $reviewCount, ')
           ..write('lastReviewedAt: $lastReviewedAt, ')
           ..write('createdAt: $createdAt')
@@ -4958,9 +5078,12 @@ class Flashcard extends DataClass implements Insertable<Flashcard> {
     phonetic,
     meaningId,
     wordType,
+    partsOfSpeechJson,
     examplesJson,
+    verbTensesExamplesJson,
     aiConversation,
     masteryLevel,
+    studyStatus,
     reviewCount,
     lastReviewedAt,
     createdAt,
@@ -4975,9 +5098,12 @@ class Flashcard extends DataClass implements Insertable<Flashcard> {
           other.phonetic == this.phonetic &&
           other.meaningId == this.meaningId &&
           other.wordType == this.wordType &&
+          other.partsOfSpeechJson == this.partsOfSpeechJson &&
           other.examplesJson == this.examplesJson &&
+          other.verbTensesExamplesJson == this.verbTensesExamplesJson &&
           other.aiConversation == this.aiConversation &&
           other.masteryLevel == this.masteryLevel &&
+          other.studyStatus == this.studyStatus &&
           other.reviewCount == this.reviewCount &&
           other.lastReviewedAt == this.lastReviewedAt &&
           other.createdAt == this.createdAt);
@@ -4990,9 +5116,12 @@ class FlashcardsCompanion extends UpdateCompanion<Flashcard> {
   final Value<String?> phonetic;
   final Value<String> meaningId;
   final Value<String> wordType;
+  final Value<String> partsOfSpeechJson;
   final Value<String> examplesJson;
+  final Value<String> verbTensesExamplesJson;
   final Value<String> aiConversation;
   final Value<int> masteryLevel;
+  final Value<int> studyStatus;
   final Value<int> reviewCount;
   final Value<DateTime?> lastReviewedAt;
   final Value<DateTime> createdAt;
@@ -5003,9 +5132,12 @@ class FlashcardsCompanion extends UpdateCompanion<Flashcard> {
     this.phonetic = const Value.absent(),
     this.meaningId = const Value.absent(),
     this.wordType = const Value.absent(),
+    this.partsOfSpeechJson = const Value.absent(),
     this.examplesJson = const Value.absent(),
+    this.verbTensesExamplesJson = const Value.absent(),
     this.aiConversation = const Value.absent(),
     this.masteryLevel = const Value.absent(),
+    this.studyStatus = const Value.absent(),
     this.reviewCount = const Value.absent(),
     this.lastReviewedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -5017,9 +5149,12 @@ class FlashcardsCompanion extends UpdateCompanion<Flashcard> {
     this.phonetic = const Value.absent(),
     this.meaningId = const Value.absent(),
     this.wordType = const Value.absent(),
+    this.partsOfSpeechJson = const Value.absent(),
     this.examplesJson = const Value.absent(),
+    this.verbTensesExamplesJson = const Value.absent(),
     this.aiConversation = const Value.absent(),
     this.masteryLevel = const Value.absent(),
+    this.studyStatus = const Value.absent(),
     this.reviewCount = const Value.absent(),
     this.lastReviewedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -5032,9 +5167,12 @@ class FlashcardsCompanion extends UpdateCompanion<Flashcard> {
     Expression<String>? phonetic,
     Expression<String>? meaningId,
     Expression<String>? wordType,
+    Expression<String>? partsOfSpeechJson,
     Expression<String>? examplesJson,
+    Expression<String>? verbTensesExamplesJson,
     Expression<String>? aiConversation,
     Expression<int>? masteryLevel,
+    Expression<int>? studyStatus,
     Expression<int>? reviewCount,
     Expression<DateTime>? lastReviewedAt,
     Expression<DateTime>? createdAt,
@@ -5046,9 +5184,13 @@ class FlashcardsCompanion extends UpdateCompanion<Flashcard> {
       if (phonetic != null) 'phonetic': phonetic,
       if (meaningId != null) 'meaning_id': meaningId,
       if (wordType != null) 'word_type': wordType,
+      if (partsOfSpeechJson != null) 'parts_of_speech_json': partsOfSpeechJson,
       if (examplesJson != null) 'examples_json': examplesJson,
+      if (verbTensesExamplesJson != null)
+        'verb_tenses_examples_json': verbTensesExamplesJson,
       if (aiConversation != null) 'ai_conversation': aiConversation,
       if (masteryLevel != null) 'mastery_level': masteryLevel,
+      if (studyStatus != null) 'study_status': studyStatus,
       if (reviewCount != null) 'review_count': reviewCount,
       if (lastReviewedAt != null) 'last_reviewed_at': lastReviewedAt,
       if (createdAt != null) 'created_at': createdAt,
@@ -5062,9 +5204,12 @@ class FlashcardsCompanion extends UpdateCompanion<Flashcard> {
     Value<String?>? phonetic,
     Value<String>? meaningId,
     Value<String>? wordType,
+    Value<String>? partsOfSpeechJson,
     Value<String>? examplesJson,
+    Value<String>? verbTensesExamplesJson,
     Value<String>? aiConversation,
     Value<int>? masteryLevel,
+    Value<int>? studyStatus,
     Value<int>? reviewCount,
     Value<DateTime?>? lastReviewedAt,
     Value<DateTime>? createdAt,
@@ -5076,9 +5221,13 @@ class FlashcardsCompanion extends UpdateCompanion<Flashcard> {
       phonetic: phonetic ?? this.phonetic,
       meaningId: meaningId ?? this.meaningId,
       wordType: wordType ?? this.wordType,
+      partsOfSpeechJson: partsOfSpeechJson ?? this.partsOfSpeechJson,
       examplesJson: examplesJson ?? this.examplesJson,
+      verbTensesExamplesJson:
+          verbTensesExamplesJson ?? this.verbTensesExamplesJson,
       aiConversation: aiConversation ?? this.aiConversation,
       masteryLevel: masteryLevel ?? this.masteryLevel,
+      studyStatus: studyStatus ?? this.studyStatus,
       reviewCount: reviewCount ?? this.reviewCount,
       lastReviewedAt: lastReviewedAt ?? this.lastReviewedAt,
       createdAt: createdAt ?? this.createdAt,
@@ -5106,14 +5255,25 @@ class FlashcardsCompanion extends UpdateCompanion<Flashcard> {
     if (wordType.present) {
       map['word_type'] = Variable<String>(wordType.value);
     }
+    if (partsOfSpeechJson.present) {
+      map['parts_of_speech_json'] = Variable<String>(partsOfSpeechJson.value);
+    }
     if (examplesJson.present) {
       map['examples_json'] = Variable<String>(examplesJson.value);
+    }
+    if (verbTensesExamplesJson.present) {
+      map['verb_tenses_examples_json'] = Variable<String>(
+        verbTensesExamplesJson.value,
+      );
     }
     if (aiConversation.present) {
       map['ai_conversation'] = Variable<String>(aiConversation.value);
     }
     if (masteryLevel.present) {
       map['mastery_level'] = Variable<int>(masteryLevel.value);
+    }
+    if (studyStatus.present) {
+      map['study_status'] = Variable<int>(studyStatus.value);
     }
     if (reviewCount.present) {
       map['review_count'] = Variable<int>(reviewCount.value);
@@ -5136,9 +5296,12 @@ class FlashcardsCompanion extends UpdateCompanion<Flashcard> {
           ..write('phonetic: $phonetic, ')
           ..write('meaningId: $meaningId, ')
           ..write('wordType: $wordType, ')
+          ..write('partsOfSpeechJson: $partsOfSpeechJson, ')
           ..write('examplesJson: $examplesJson, ')
+          ..write('verbTensesExamplesJson: $verbTensesExamplesJson, ')
           ..write('aiConversation: $aiConversation, ')
           ..write('masteryLevel: $masteryLevel, ')
+          ..write('studyStatus: $studyStatus, ')
           ..write('reviewCount: $reviewCount, ')
           ..write('lastReviewedAt: $lastReviewedAt, ')
           ..write('createdAt: $createdAt')
@@ -8621,9 +8784,12 @@ typedef $$FlashcardsTableCreateCompanionBuilder =
       Value<String?> phonetic,
       Value<String> meaningId,
       Value<String> wordType,
+      Value<String> partsOfSpeechJson,
       Value<String> examplesJson,
+      Value<String> verbTensesExamplesJson,
       Value<String> aiConversation,
       Value<int> masteryLevel,
+      Value<int> studyStatus,
       Value<int> reviewCount,
       Value<DateTime?> lastReviewedAt,
       Value<DateTime> createdAt,
@@ -8636,9 +8802,12 @@ typedef $$FlashcardsTableUpdateCompanionBuilder =
       Value<String?> phonetic,
       Value<String> meaningId,
       Value<String> wordType,
+      Value<String> partsOfSpeechJson,
       Value<String> examplesJson,
+      Value<String> verbTensesExamplesJson,
       Value<String> aiConversation,
       Value<int> masteryLevel,
+      Value<int> studyStatus,
       Value<int> reviewCount,
       Value<DateTime?> lastReviewedAt,
       Value<DateTime> createdAt,
@@ -8701,8 +8870,18 @@ class $$FlashcardsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get partsOfSpeechJson => $composableBuilder(
+    column: $table.partsOfSpeechJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get examplesJson => $composableBuilder(
     column: $table.examplesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get verbTensesExamplesJson => $composableBuilder(
+    column: $table.verbTensesExamplesJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8713,6 +8892,11 @@ class $$FlashcardsTableFilterComposer
 
   ColumnFilters<int> get masteryLevel => $composableBuilder(
     column: $table.masteryLevel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get studyStatus => $composableBuilder(
+    column: $table.studyStatus,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8789,8 +8973,18 @@ class $$FlashcardsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get partsOfSpeechJson => $composableBuilder(
+    column: $table.partsOfSpeechJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get examplesJson => $composableBuilder(
     column: $table.examplesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get verbTensesExamplesJson => $composableBuilder(
+    column: $table.verbTensesExamplesJson,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -8801,6 +8995,11 @@ class $$FlashcardsTableOrderingComposer
 
   ColumnOrderings<int> get masteryLevel => $composableBuilder(
     column: $table.masteryLevel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get studyStatus => $composableBuilder(
+    column: $table.studyStatus,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -8867,8 +9066,18 @@ class $$FlashcardsTableAnnotationComposer
   GeneratedColumn<String> get wordType =>
       $composableBuilder(column: $table.wordType, builder: (column) => column);
 
+  GeneratedColumn<String> get partsOfSpeechJson => $composableBuilder(
+    column: $table.partsOfSpeechJson,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get examplesJson => $composableBuilder(
     column: $table.examplesJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get verbTensesExamplesJson => $composableBuilder(
+    column: $table.verbTensesExamplesJson,
     builder: (column) => column,
   );
 
@@ -8879,6 +9088,11 @@ class $$FlashcardsTableAnnotationComposer
 
   GeneratedColumn<int> get masteryLevel => $composableBuilder(
     column: $table.masteryLevel,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get studyStatus => $composableBuilder(
+    column: $table.studyStatus,
     builder: (column) => column,
   );
 
@@ -8954,9 +9168,12 @@ class $$FlashcardsTableTableManager
                 Value<String?> phonetic = const Value.absent(),
                 Value<String> meaningId = const Value.absent(),
                 Value<String> wordType = const Value.absent(),
+                Value<String> partsOfSpeechJson = const Value.absent(),
                 Value<String> examplesJson = const Value.absent(),
+                Value<String> verbTensesExamplesJson = const Value.absent(),
                 Value<String> aiConversation = const Value.absent(),
                 Value<int> masteryLevel = const Value.absent(),
+                Value<int> studyStatus = const Value.absent(),
                 Value<int> reviewCount = const Value.absent(),
                 Value<DateTime?> lastReviewedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -8967,9 +9184,12 @@ class $$FlashcardsTableTableManager
                 phonetic: phonetic,
                 meaningId: meaningId,
                 wordType: wordType,
+                partsOfSpeechJson: partsOfSpeechJson,
                 examplesJson: examplesJson,
+                verbTensesExamplesJson: verbTensesExamplesJson,
                 aiConversation: aiConversation,
                 masteryLevel: masteryLevel,
+                studyStatus: studyStatus,
                 reviewCount: reviewCount,
                 lastReviewedAt: lastReviewedAt,
                 createdAt: createdAt,
@@ -8982,9 +9202,12 @@ class $$FlashcardsTableTableManager
                 Value<String?> phonetic = const Value.absent(),
                 Value<String> meaningId = const Value.absent(),
                 Value<String> wordType = const Value.absent(),
+                Value<String> partsOfSpeechJson = const Value.absent(),
                 Value<String> examplesJson = const Value.absent(),
+                Value<String> verbTensesExamplesJson = const Value.absent(),
                 Value<String> aiConversation = const Value.absent(),
                 Value<int> masteryLevel = const Value.absent(),
+                Value<int> studyStatus = const Value.absent(),
                 Value<int> reviewCount = const Value.absent(),
                 Value<DateTime?> lastReviewedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -8995,9 +9218,12 @@ class $$FlashcardsTableTableManager
                 phonetic: phonetic,
                 meaningId: meaningId,
                 wordType: wordType,
+                partsOfSpeechJson: partsOfSpeechJson,
                 examplesJson: examplesJson,
+                verbTensesExamplesJson: verbTensesExamplesJson,
                 aiConversation: aiConversation,
                 masteryLevel: masteryLevel,
+                studyStatus: studyStatus,
                 reviewCount: reviewCount,
                 lastReviewedAt: lastReviewedAt,
                 createdAt: createdAt,

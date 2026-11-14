@@ -20,6 +20,7 @@ class InitialBinding extends Bindings {
       () => TutorRepository(
         database: Get.find<AppDatabase>(),
         restProvider: Get.find<GeminiRestProvider>(),
+        liveProvider: Get.find<GeminiLiveProvider>(),
       ),
       fenix: true,
     );

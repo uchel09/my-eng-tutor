@@ -39,7 +39,7 @@ class AppDatabase extends _$AppDatabase {
       : super(driftDatabase(name: 'my_english_tutor_db'));
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -59,6 +59,19 @@ class AppDatabase extends _$AppDatabase {
           if (from < 4) {
             await m.addColumn(appSettings, appSettings.flashcardModel);
             await m.addColumn(appSettings, appSettings.flashcardTtsModel);
+          }
+          if (from < 5) {
+            await customStatement(
+              "UPDATE app_settings SET flashcard_tts_model = live_model "
+              "WHERE flashcard_tts_model LIKE '%-tts' OR TRIM(flashcard_tts_model) = ''",
+            );
+          }
+          if (from < 6) {
+            await m.addColumn(flashcards, flashcards.partsOfSpeechJson);
+            await m.addColumn(flashcards, flashcards.verbTensesExamplesJson);
+          }
+          if (from < 7) {
+            await m.addColumn(flashcards, flashcards.studyStatus);
           }
         },
         beforeOpen: (OpeningDetails details) async {

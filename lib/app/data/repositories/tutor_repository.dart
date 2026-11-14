@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:drift/drift.dart';
+import 'package:get/get.dart' hide Value;
 
 import '../../core/constants/gemini_constants.dart';
 import '../local/app_database.dart';
@@ -6,6 +10,7 @@ import '../local/daos/flashcard_dao.dart';
 import '../local/daos/roadmap_dao.dart';
 import '../models/speech_insight_model.dart';
 import '../models/transcript_turn_model.dart';
+import '../providers/gemini_live_provider.dart';
 import '../providers/gemini_rest_provider.dart';
 
 /// Result returned after evaluating and persisting a speaking session.
@@ -23,16 +28,27 @@ class SessionEvaluationOutput {
   final bool didUnlockProgress;
 }
 
-/// Coordinates local Drift persistence with Gemini REST evaluation services.
+/// Coordinates local Drift persistence with Gemini Live and REST services.
 class TutorRepository {
   TutorRepository({
     required AppDatabase database,
     required GeminiRestProvider restProvider,
+    GeminiLiveProvider? liveProvider,
   })  : _database = database,
-        _restProvider = restProvider;
+        _restProvider = restProvider,
+        _liveProvider = liveProvider;
 
   final AppDatabase _database;
   final GeminiRestProvider _restProvider;
+  final GeminiLiveProvider? _liveProvider;
+
+  GeminiLiveProvider? get _resolvedLiveProvider {
+    if (_liveProvider != null) return _liveProvider;
+    if (Get.isRegistered<GeminiLiveProvider>()) {
+      return Get.find<GeminiLiveProvider>();
+    }
+    return null;
+  }
 
   // --- Roadmap ---
 
@@ -318,6 +334,16 @@ class TutorRepository {
     );
   }
 
+  Future<int> getOrCreateDeckByName({
+    required String name,
+    String? description,
+  }) {
+    return _database.flashcardDao.getOrCreateDeckByName(
+      name: name,
+      description: description,
+    );
+  }
+
   Future<void> renameDeck(int deckId, String newName) {
     return _database.flashcardDao.renameDeck(deckId, newName);
   }
@@ -338,6 +364,32 @@ class TutorRepository {
     );
   }
 
+  Future<int> getOrCreateSubDeckByName({
+    required int deckId,
+    required String name,
+    String? description,
+  }) {
+    return _database.flashcardDao.getOrCreateSubDeckByName(
+      deckId: deckId,
+      name: name,
+      description: description,
+    );
+  }
+
+  Future<Set<String>> getExistingWordsInDeck(int deckId) {
+    return _database.flashcardDao.getExistingWordsInDeck(deckId);
+  }
+
+  Future<int> bulkUpsertFlashcards({
+    required int subDeckId,
+    required List<FlashcardSeedInput> items,
+  }) {
+    return _database.flashcardDao.bulkUpsertFlashcards(
+      subDeckId: subDeckId,
+      items: items,
+    );
+  }
+
   Future<void> renameSubDeck(int subDeckId, String newName) {
     return _database.flashcardDao.renameSubDeck(subDeckId, newName);
   }
@@ -352,7 +404,9 @@ class TutorRepository {
     String? phonetic,
     required String meaningId,
     String wordType = 'non_verb',
+    List<String>? partsOfSpeech,
     List<FlashcardExampleItem> examples = const [],
+    List<FlashcardExampleItem>? verbTensesExamples,
     String aiConversation = '',
   }) {
     return _database.flashcardDao.createFlashcard(
@@ -361,25 +415,33 @@ class TutorRepository {
       phonetic: phonetic,
       meaningId: meaningId,
       wordType: wordType,
+      partsOfSpeech: partsOfSpeech,
       examples: examples,
+      verbTensesExamples: verbTensesExamples,
       aiConversation: aiConversation,
     );
   }
 
   Future<void> updateFlashcardPracticeContent({
     required int cardId,
+    String? word,
     String? phonetic,
     String? meaningId,
     String? wordType,
+    List<String>? partsOfSpeech,
     List<FlashcardExampleItem>? examples,
+    List<FlashcardExampleItem>? verbTensesExamples,
     String? aiConversation,
   }) {
     return _database.flashcardDao.updateFlashcardPracticeContent(
       cardId: cardId,
+      word: word,
       phonetic: phonetic,
       meaningId: meaningId,
       wordType: wordType,
+      partsOfSpeech: partsOfSpeech,
       examples: examples,
+      verbTensesExamples: verbTensesExamples,
       aiConversation: aiConversation,
     );
   }
@@ -394,6 +456,16 @@ class TutorRepository {
     );
   }
 
+  Future<void> updateCardStudyStatus({
+    required int cardId,
+    required int studyStatus,
+  }) {
+    return _database.flashcardDao.updateCardStudyStatus(
+      cardId: cardId,
+      studyStatus: studyStatus,
+    );
+  }
+
   Future<void> deleteFlashcard(int cardId) {
     return _database.flashcardDao.deleteFlashcard(cardId);
   }
@@ -404,6 +476,9 @@ class TutorRepository {
     required String word,
     String? currentMeaningId,
     String? wordTypeHint,
+    List<String> knownPartsOfSpeech = const <String>[],
+    FlashcardExampleGenerationMode mode =
+        FlashcardExampleGenerationMode.standard,
     bool includeAll16Tenses = false,
     List<String> avoidSentences = const [],
   }) async {
@@ -417,6 +492,8 @@ class TutorRepository {
       word: word,
       currentMeaningId: currentMeaningId,
       wordTypeHint: wordTypeHint,
+      knownPartsOfSpeech: knownPartsOfSpeech,
+      mode: mode,
       includeAll16Tenses: includeAll16Tenses,
       avoidSentences: avoidSentences,
     );
@@ -458,20 +535,110 @@ class TutorRepository {
     );
   }
 
-  /// Synthesizes English speech PCM16 24kHz audio via the configured Flashcard TTS model.
+  Future<List<GeneratedVocabPackItem>> generateDailyVocabBatch({
+    required String cefrLevel,
+    required String topicName,
+    int count = 50,
+    List<String> avoidWords = const <String>[],
+  }) async {
+    final settings = await getSettings();
+    final effectiveFlashcardModel = settings.flashcardModel.trim().isNotEmpty
+        ? settings.flashcardModel
+        : settings.scoringModel;
+    return _restProvider.generateDailyVocabBatch(
+      apiKey: settings.apiKey,
+      model: effectiveFlashcardModel,
+      cefrLevel: cefrLevel,
+      topicName: topicName,
+      count: count,
+      avoidWords: avoidWords,
+    );
+  }
+
+  /// Synthesizes English speech PCM16 24kHz audio via Live WebSocket (default)
+  /// or REST `-tts` endpoint when a `-tts` model ID is explicitly configured.
   Future<Uint8List> synthesizeSpeechPcm24k({
     required String text,
     bool slow = false,
   }) async {
     final settings = await getSettings();
+    final apiKey = settings.apiKey.trim();
+    if (apiKey.isEmpty) {
+      throw const GeminiApiException(
+        'API key Gemini belum diisi. Masukkan API key di Pengaturan terlebih dahulu.',
+        statusCode: 400,
+      );
+    }
+
     final ttsModel = settings.flashcardTtsModel.trim().isNotEmpty
-        ? settings.flashcardTtsModel
-        : GeminiConstants.defaultTtsModel;
-    return _restProvider.synthesizeSpeechPcm24k(
-      apiKey: settings.apiKey,
-      model: ttsModel,
-      text: text,
-      slow: slow,
-    );
+        ? settings.flashcardTtsModel.trim()
+        : (settings.liveModel.trim().isNotEmpty
+              ? settings.liveModel.trim()
+              : GeminiConstants.defaultLiveModel);
+
+    final liveFallbackModel = settings.liveModel.trim();
+
+    Future<Uint8List> synthesizeWithModel(String targetModel) {
+      if (targetModel.toLowerCase().contains('-tts')) {
+        return _restProvider.synthesizeSpeechPcm24k(
+          apiKey: apiKey,
+          model: targetModel,
+          text: text,
+          slow: slow,
+        );
+      }
+
+      final liveProvider = _resolvedLiveProvider;
+      if (liveProvider == null) {
+        throw const GeminiLiveException(
+          'Layanan Gemini Live tidak tersedia untuk memutar suara Flashcard.',
+        );
+      }
+
+      return liveProvider.synthesizeSpeechOncePcm24k(
+        apiKey: apiKey,
+        model: targetModel,
+        text: text,
+        slow: slow,
+      );
+    }
+
+    try {
+      return await synthesizeWithModel(ttsModel);
+    } catch (error) {
+      final canRetryWithLiveModel =
+          liveFallbackModel.isNotEmpty &&
+          liveFallbackModel != ttsModel &&
+          !liveFallbackModel.toLowerCase().contains('-tts') &&
+          !_isOfflineOrApiKeyFailure(error);
+      if (!canRetryWithLiveModel) {
+        rethrow;
+      }
+      return synthesizeWithModel(liveFallbackModel);
+    }
+  }
+
+  static bool _isOfflineOrApiKeyFailure(Object error) {
+    if (error is SocketException || error is TimeoutException) return true;
+    if (error is GeminiApiException &&
+        (error.statusCode == null ||
+            error.statusCode == 400 ||
+            error.statusCode == 401 ||
+            error.statusCode == 403)) {
+      return true;
+    }
+
+    final lower = error.toString().toLowerCase();
+    return lower.contains('socket') ||
+        lower.contains('timeout') ||
+        lower.contains('internet') ||
+        lower.contains('offline') ||
+        lower.contains('network') ||
+        lower.contains('failed host lookup') ||
+        lower.contains('api key') ||
+        lower.contains('401') ||
+        lower.contains('403') ||
+        lower.contains('unauthenticated') ||
+        lower.contains('permission_denied');
   }
 }

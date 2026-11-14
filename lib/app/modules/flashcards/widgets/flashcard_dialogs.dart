@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../data/local/daos/flashcard_dao.dart';
 import '../../../data/services/tts_service.dart';
 
 /// Displays a consistent Material 3 snackbar when an overlay context exists.
@@ -46,12 +47,27 @@ class FlashcardWordInput {
   const FlashcardWordInput({
     required this.word,
     required this.meaningId,
-    required this.wordType,
+    this.wordType = 'non_verb',
   });
 
   final String word;
   final String meaningId;
   final String wordType;
+}
+
+/// Result returned from the Edit Flashcard dialog in Level 3 Flashcards.
+class FlashcardEditInput {
+  const FlashcardEditInput({
+    required this.word,
+    required this.phonetic,
+    required this.meaningId,
+    required this.partsOfSpeech,
+  });
+
+  final String word;
+  final String phonetic;
+  final String meaningId;
+  final List<String> partsOfSpeech;
 }
 
 /// Opens a keyboard-safe dialog for creating or renaming a Deck or Sub-Deck.
@@ -207,6 +223,25 @@ Future<FlashcardWordInput?> showFlashcardAddWordDialog({
   );
 }
 
+/// Opens a keyboard-safe dialog to edit an existing flashcard word and details.
+Future<FlashcardEditInput?> showFlashcardEditWordDialog({
+  required BuildContext context,
+  required String initialWord,
+  String initialPhonetic = '',
+  String initialMeaningId = '',
+  List<String> initialPartsOfSpeech = const <String>[],
+}) {
+  return showDialog<FlashcardEditInput>(
+    context: context,
+    builder: (_) => _FlashcardEditWordDialog(
+      initialWord: initialWord,
+      initialPhonetic: initialPhonetic,
+      initialMeaningId: initialMeaningId,
+      initialPartsOfSpeech: initialPartsOfSpeech,
+    ),
+  );
+}
+
 class _FlashcardNamedInputDialog extends StatefulWidget {
   const _FlashcardNamedInputDialog({
     required this.title,
@@ -339,7 +374,6 @@ class _FlashcardAddWordDialog extends StatefulWidget {
 class _FlashcardAddWordDialogState extends State<_FlashcardAddWordDialog> {
   final TextEditingController _wordController = TextEditingController();
   final TextEditingController _meaningController = TextEditingController();
-  String _wordType = 'non_verb';
   String? _wordError;
 
   @override
@@ -360,7 +394,6 @@ class _FlashcardAddWordDialogState extends State<_FlashcardAddWordDialog> {
       FlashcardWordInput(
         word: trimmedWord,
         meaningId: _meaningController.text.trim(),
-        wordType: _wordType,
       ),
     );
   }
@@ -385,7 +418,7 @@ class _FlashcardAddWordDialogState extends State<_FlashcardAddWordDialog> {
               },
               decoration: InputDecoration(
                 labelText: 'Kata / Frasa Inggris *',
-                hintText: 'Contoh: negotiate',
+                hintText: 'Contoh: schedule',
                 errorText: _wordError,
               ),
             ),
@@ -397,26 +430,8 @@ class _FlashcardAddWordDialogState extends State<_FlashcardAddWordDialog> {
               onSubmitted: (_) => _submit(),
               decoration: const InputDecoration(
                 labelText: 'Arti Bahasa Indonesia (opsional)',
-                hintText: 'Contoh: bernegosiasi',
+                hintText: 'Contoh: jadwal / menjadwalkan',
               ),
-            ),
-            const SizedBox(height: 12),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment<String>(
-                  value: 'non_verb',
-                  label: Text('Non-Verb'),
-                ),
-                ButtonSegment<String>(
-                  value: 'verb',
-                  label: Text('Verb'),
-                ),
-              ],
-              selected: <String>{_wordType},
-              onSelectionChanged: (selection) {
-                if (selection.isEmpty) return;
-                setState(() => _wordType = selection.first);
-              },
             ),
           ],
         ),
@@ -435,6 +450,143 @@ class _FlashcardAddWordDialogState extends State<_FlashcardAddWordDialog> {
   }
 }
 
+class _FlashcardEditWordDialog extends StatefulWidget {
+  const _FlashcardEditWordDialog({
+    required this.initialWord,
+    required this.initialPhonetic,
+    required this.initialMeaningId,
+    required this.initialPartsOfSpeech,
+  });
+
+  final String initialWord;
+  final String initialPhonetic;
+  final String initialMeaningId;
+  final List<String> initialPartsOfSpeech;
+
+  @override
+  State<_FlashcardEditWordDialog> createState() =>
+      _FlashcardEditWordDialogState();
+}
+
+class _FlashcardEditWordDialogState extends State<_FlashcardEditWordDialog> {
+  late final TextEditingController _wordController;
+  late final TextEditingController _phoneticController;
+  late final TextEditingController _meaningController;
+  late final TextEditingController _posController;
+  String? _wordError;
+
+  @override
+  void initState() {
+    super.initState();
+    _wordController = TextEditingController(text: widget.initialWord);
+    _phoneticController = TextEditingController(text: widget.initialPhonetic);
+    _meaningController = TextEditingController(text: widget.initialMeaningId);
+    _posController = TextEditingController(
+      text: widget.initialPartsOfSpeech.join(', '),
+    );
+  }
+
+  @override
+  void dispose() {
+    _wordController.dispose();
+    _phoneticController.dispose();
+    _meaningController.dispose();
+    _posController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final trimmedWord = _wordController.text.trim();
+    if (trimmedWord.isEmpty) {
+      setState(() => _wordError = 'Kata / Frasa Inggris wajib diisi.');
+      return;
+    }
+
+    final normalizedPos = FlashcardPosHelper.normalizePartsOfSpeech(
+      _posController.text.split(','),
+    );
+
+    Navigator.of(context).pop(
+      FlashcardEditInput(
+        word: trimmedWord,
+        phonetic: _phoneticController.text.trim(),
+        meaningId: _meaningController.text.trim(),
+        partsOfSpeech: normalizedPos,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit Flashcard'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _wordController,
+              autofocus: true,
+              textInputAction: TextInputAction.next,
+              onChanged: (_) {
+                if (_wordError != null) {
+                  setState(() => _wordError = null);
+                }
+              },
+              decoration: InputDecoration(
+                labelText: 'Kata / Frasa Inggris *',
+                hintText: 'Contoh: schedule',
+                errorText: _wordError,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _phoneticController,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Fonetik IPA (opsional)',
+                hintText: 'Contoh: /ˈskedʒ.uːl/',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _meaningController,
+              textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Arti Bahasa Indonesia (opsional)',
+                hintText: 'Contoh: jadwal / menjadwalkan',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _posController,
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _submit(),
+              decoration: const InputDecoration(
+                labelText: 'Jenis Kata (opsional, pisah koma)',
+                hintText: 'Contoh: Noun, Verb',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Batal'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('Simpan'),
+        ),
+      ],
+    );
+  }
+}
+
 /// Compact reactive pill indicating the active or most recent [TtsService] voice source.
 class FlashcardVoiceSourceChip extends StatelessWidget {
   const FlashcardVoiceSourceChip({
@@ -443,6 +595,27 @@ class FlashcardVoiceSourceChip extends StatelessWidget {
   });
 
   final TtsService ttsService;
+
+  void _showFallbackDiagnosticDialog(BuildContext context) {
+    final detail = ttsService.lastFallbackDetail.value ??
+        ttsService.lastFallbackReason.value ??
+        'Menggunakan suara perangkat (offline/kuota habis).';
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Info Suara Offline (TTS)'),
+          content: Text(detail),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Tutup'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -461,6 +634,7 @@ class FlashcardVoiceSourceChip extends StatelessWidget {
       final IconData? iconData;
       final Color fgColor;
       final Color bgColor;
+      final isOfflineFallback = !isLoading && source == 'offline_tts';
 
       if (isLoading) {
         label = 'Memuat suara AI...';
@@ -484,35 +658,53 @@ class FlashcardVoiceSourceChip extends StatelessWidget {
         bgColor = colorScheme.surfaceContainerHighest.withValues(alpha: 0.8);
       }
 
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: bgColor,
+      return Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
           borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isLoading)
-              SizedBox(
-                width: 12,
-                height: 12,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: fgColor,
-                ),
-              )
-            else
-              Icon(iconData, size: 14, color: fgColor),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: fgColor,
-                fontWeight: FontWeight.w700,
-              ),
+          onTap: isOfflineFallback
+              ? () => _showFallbackDiagnosticDialog(context)
+              : null,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(20),
             ),
-          ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isLoading)
+                  SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: fgColor,
+                    ),
+                  )
+                else
+                  Icon(iconData, size: 14, color: fgColor),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: fgColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (isOfflineFallback) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 13,
+                    color: fgColor,
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       );
     });

@@ -5,6 +5,7 @@ import '../../../core/widgets/app_state_widgets.dart';
 import '../../../data/local/daos/flashcard_dao.dart';
 import '../controllers/flashcard_subdecks_controller.dart';
 import '../widgets/flashcard_dialogs.dart';
+import '../widgets/flashcard_progress_circle.dart';
 
 class FlashcardSubDecksView extends GetView<FlashcardSubDecksController> {
   const FlashcardSubDecksView({super.key});
@@ -160,22 +161,22 @@ class _SubDeckCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: colorScheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   Icons.style_rounded,
                   color: colorScheme.onSecondaryContainer,
-                  size: 24,
+                  size: 22,
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,26 +200,70 @@ class _SubDeckCard extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '${stats.cardCount} Kata',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${stats.cardCount} Kata',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
-                      ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: stats.completedCardCount > 0
+                                ? Colors.green.shade600.withValues(alpha: 0.14)
+                                : (stats.reviewCardCount > 0
+                                      ? Colors.amber.shade700.withValues(
+                                          alpha: 0.14,
+                                        )
+                                      : colorScheme.surfaceContainerHighest),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            stats.reviewCardCount > 0
+                                ? '${stats.completedCardCount}/${stats.cardCount} Hafal • ${stats.reviewCardCount} Ulang'
+                                : '${stats.completedCardCount}/${stats.cardCount} Hafal',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: stats.completedCardCount > 0
+                                  ? (theme.brightness == Brightness.dark
+                                        ? Colors.green.shade300
+                                        : Colors.green.shade700)
+                                  : (stats.reviewCardCount > 0
+                                        ? (theme.brightness == Brightness.dark
+                                              ? Colors.amber.shade300
+                                              : Colors.amber.shade800)
+                                        : colorScheme.onSurfaceVariant),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
+              FlashcardProgressCircle(
+                percent: stats.progressPercent,
+                hasCards: stats.cardCount > 0,
+              ),
+              const SizedBox(width: 4),
               Icon(
                 Icons.more_vert_rounded,
                 color: colorScheme.onSurfaceVariant,

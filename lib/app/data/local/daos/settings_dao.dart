@@ -25,7 +25,7 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
   static const String defaultLiveModel = 'gemini-3.8-live';
   static const String defaultScoringModel = 'gemini-3.8-flash';
   static const String defaultFlashcardModel = defaultScoringModel;
-  static const String defaultTtsModel = 'gemini-2.5-flash-preview-tts';
+  static const String defaultTtsModel = defaultLiveModel;
 
   /// Watches the singleton [AppSetting] row (`id = 1`).
   Stream<AppSetting> watchSettings() {
@@ -223,9 +223,12 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
               'phonetic': e.phonetic,
               'meaningId': e.meaningId,
               'wordType': e.wordType,
+              'partsOfSpeechJson': e.partsOfSpeechJson,
               'examplesJson': e.examplesJson,
+              'verbTensesExamplesJson': e.verbTensesExamplesJson,
               'aiConversation': e.aiConversation,
               'masteryLevel': e.masteryLevel,
+              'studyStatus': e.studyStatus,
               'reviewCount': e.reviewCount,
               'lastReviewedAt': e.lastReviewedAt?.toIso8601String(),
               'createdAt': e.createdAt.toIso8601String(),
@@ -386,9 +389,16 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
             phonetic: Value(item['phonetic'] as String?),
             meaningId: Value((item['meaningId'] as String?) ?? ''),
             wordType: Value((item['wordType'] as String?) ?? 'non_verb'),
+            partsOfSpeechJson: Value(
+              (item['partsOfSpeechJson'] as String?) ?? '[]',
+            ),
             examplesJson: Value((item['examplesJson'] as String?) ?? '[]'),
+            verbTensesExamplesJson: Value(
+              (item['verbTensesExamplesJson'] as String?) ?? '[]',
+            ),
             aiConversation: Value((item['aiConversation'] as String?) ?? ''),
             masteryLevel: Value((item['masteryLevel'] as int?) ?? 0),
+            studyStatus: Value(((item['studyStatus'] as int?) ?? 0).clamp(0, 2)),
             reviewCount: Value((item['reviewCount'] as int?) ?? 0),
             lastReviewedAt: Value(
               item['lastReviewedAt'] != null

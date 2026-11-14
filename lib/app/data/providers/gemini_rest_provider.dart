@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:http/http.dart' as http;
 
 import '../../core/constants/gemini_constants.dart';
@@ -12,10 +12,18 @@ import '../local/daos/flashcard_dao.dart';
 import '../models/speech_insight_model.dart';
 import '../models/transcript_turn_model.dart';
 
+/// Controls how Gemini AI generates example sentences for a flashcard.
+enum FlashcardExampleGenerationMode {
+  standard,
+  verb16TensesOnly,
+  nonVerbOnly,
+}
+
 /// AI-generated practice details, example sentences, and mini dialog for a flashcard.
 class FlashcardPracticeAiResult {
   const FlashcardPracticeAiResult({
     required this.wordType,
+    this.partsOfSpeech = const <String>[],
     required this.phonetic,
     required this.meaningId,
     required this.examples,
@@ -24,6 +32,10 @@ class FlashcardPracticeAiResult {
 
   /// Classified part of speech category: `'verb'` or `'non_verb'`.
   final String wordType;
+
+  /// All detected parts of speech in Title Case (unlimited combinations).
+  final List<String> partsOfSpeech;
+
   final String phonetic;
   final String meaningId;
   final List<FlashcardExampleItem> examples;
@@ -53,8 +65,19 @@ class FlashcardPracticeAiResult {
     Map<String, dynamic> json, {
     String? fallbackMeaningId,
   }) {
+    final rawPos = json['partsOfSpeech'];
+    final rawPosStrings = <String>[];
+    if (rawPos is List) {
+      for (final item in rawPos) {
+        final label = item?.toString().trim() ?? '';
+        if (label.isNotEmpty) {
+          rawPosStrings.add(label);
+        }
+      }
+    }
+    var partsOfSpeech = FlashcardPosHelper.normalizePartsOfSpeech(rawPosStrings);
+
     final rawType = (json['wordType']?.toString() ?? '').trim().toLowerCase();
-    final normalizedType = rawType == 'verb' ? 'verb' : 'non_verb';
 
     final rawExamples = json['examples'];
     final examples = <FlashcardExampleItem>[];
@@ -65,15 +88,41 @@ class FlashcardPracticeAiResult {
             Map<String, dynamic>.from(item),
           );
           if (parsed.en.isNotEmpty) {
-            examples.add(parsed);
+            examples.add(
+              parsed.pos.isNotEmpty
+                  ? FlashcardExampleItem(
+                      tense: parsed.tense,
+                      en: parsed.en,
+                      id: parsed.id,
+                      pos: FlashcardPosHelper.normalizePosLabel(parsed.pos),
+                    )
+                  : parsed,
+            );
           }
         }
       }
     }
 
+    if (partsOfSpeech.isEmpty) {
+      if (rawType == 'verb') {
+        partsOfSpeech = const <String>['Verb'];
+      } else {
+        final inferred = FlashcardPosHelper.normalizePartsOfSpeech(
+          examples.map((e) => e.pos).where((p) => p.isNotEmpty),
+        );
+        partsOfSpeech = inferred;
+      }
+    }
+
+    final normalizedType = FlashcardPosHelper.deriveWordType(
+      partsOfSpeech,
+      fallback: rawType,
+    );
+
     final parsedMeaning = (json['meaningId']?.toString() ?? '').trim();
     return FlashcardPracticeAiResult(
       wordType: normalizedType,
+      partsOfSpeech: partsOfSpeech,
       phonetic: (json['phonetic']?.toString() ?? '').trim(),
       meaningId: parsedMeaning.isNotEmpty
           ? parsedMeaning
@@ -101,6 +150,48 @@ class FlashcardQuizQuestion {
   final List<String> options;
   final int correctIndex;
   final String explanationId;
+}
+
+/// Lightweight vocabulary entry generated in bulk for Daily Vocab curriculum packs.
+class GeneratedVocabPackItem {
+  const GeneratedVocabPackItem({
+    required this.word,
+    required this.phonetic,
+    required this.meaningId,
+    required this.partsOfSpeech,
+  });
+
+  final String word;
+  final String phonetic;
+  final String meaningId;
+  final List<String> partsOfSpeech;
+
+  factory GeneratedVocabPackItem.fromJson(Map<String, dynamic> json) {
+    final rawPos = json['partsOfSpeech'] ?? json['pos'];
+    final posInputs = <String>[];
+    if (rawPos is List) {
+      for (final item in rawPos) {
+        final label = item?.toString().trim() ?? '';
+        if (label.isNotEmpty) {
+          posInputs.add(label);
+        }
+      }
+    } else if (rawPos is String && rawPos.trim().isNotEmpty) {
+      for (final segment in rawPos.split(RegExp(r'[,+/|]'))) {
+        final label = segment.trim();
+        if (label.isNotEmpty) {
+          posInputs.add(label);
+        }
+      }
+    }
+
+    return GeneratedVocabPackItem(
+      word: (json['word']?.toString() ?? '').trim(),
+      phonetic: (json['phonetic']?.toString() ?? '').trim(),
+      meaningId: (json['meaningId']?.toString() ?? '').trim(),
+      partsOfSpeech: FlashcardPosHelper.normalizePartsOfSpeech(posInputs),
+    );
+  }
 }
 
 /// Word-level pronunciation feedback inside [SentencePronunciationFeedback].
@@ -562,6 +653,9 @@ class GeminiRestProvider {
     required String word,
     String? currentMeaningId,
     String? wordTypeHint,
+    List<String> knownPartsOfSpeech = const <String>[],
+    FlashcardExampleGenerationMode mode =
+        FlashcardExampleGenerationMode.standard,
     bool includeAll16Tenses = false,
     List<String> avoidSentences = const [],
   }) async {
@@ -585,6 +679,8 @@ class GeminiRestProvider {
       word: trimmedWord,
       currentMeaningId: currentMeaningId,
       wordTypeHint: wordTypeHint,
+      knownPartsOfSpeech: knownPartsOfSpeech,
+      mode: mode,
       includeAll16Tenses: includeAll16Tenses,
       avoidSentences: avoidSentences,
     );
@@ -801,6 +897,92 @@ class GeminiRestProvider {
     } on FormatException {
       throw const GeminiApiException(
         'Format hasil evaluasi pelafalan dari Gemini tidak valid. Silakan coba lagi.',
+      );
+    }
+  }
+
+  /// Generates up to [count] lightweight everyday conversation vocabulary items
+  /// (`word`, `phonetic`, `meaningId`, `partsOfSpeech`) for a CEFR level & topic.
+  Future<List<GeneratedVocabPackItem>> generateDailyVocabBatch({
+    required String apiKey,
+    required String model,
+    required String cefrLevel,
+    required String topicName,
+    int count = 50,
+    List<String> avoidWords = const <String>[],
+  }) async {
+    final trimmedKey = apiKey.trim();
+    if (trimmedKey.isEmpty) {
+      throw const GeminiApiException(
+        'API key Gemini belum diisi. Masukkan API key di Pengaturan terlebih dahulu.',
+        statusCode: 400,
+      );
+    }
+
+    final trimmedTopic = topicName.trim();
+    if (trimmedTopic.isEmpty) {
+      throw const GeminiApiException(
+        'Nama topik kosakata tidak boleh kosong.',
+        statusCode: 400,
+      );
+    }
+
+    final targetCount = count.clamp(1, 80);
+    final avoidPromptWords = avoidWords
+        .map((w) => w.trim())
+        .where((w) => w.isNotEmpty)
+        .toList(growable: false);
+    final cappedAvoidForPrompt = avoidPromptWords.length <= 300
+        ? avoidPromptWords
+        : avoidPromptWords.sublist(avoidPromptWords.length - 300);
+
+    final prompt = _buildDailyVocabBatchPrompt(
+      cefrLevel: cefrLevel.trim().toUpperCase(),
+      topicName: trimmedTopic,
+      count: targetCount,
+      avoidWords: cappedAvoidForPrompt,
+    );
+
+    final payload = <String, dynamic>{
+      'contents': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'role': 'user',
+          'parts': <Map<String, dynamic>>[
+            <String, dynamic>{'text': prompt},
+          ],
+        },
+      ],
+      'generationConfig': <String, dynamic>{
+        'responseMimeType': 'application/json',
+        'temperature': 0.35,
+        'maxOutputTokens': 4096,
+      },
+    };
+
+    final responseJson = await _postGenerateContent(
+      apiKey: trimmedKey,
+      model: model,
+      body: payload,
+      timeout: const Duration(seconds: 60),
+    );
+
+    final rawText = _extractFirstCandidateText(responseJson);
+    if (rawText.trim().isEmpty) {
+      throw const GeminiApiException(
+        'Gemini tidak mengembalikan daftar kosakata. Silakan coba lagi.',
+      );
+    }
+
+    final avoidSet = avoidWords
+        .map((w) => w.trim().toLowerCase())
+        .where((w) => w.isNotEmpty)
+        .toSet();
+
+    try {
+      return _parseDailyVocabBatch(rawText: rawText, avoidSet: avoidSet);
+    } on FormatException {
+      throw const GeminiApiException(
+        'Format daftar kosakata dari Gemini tidak valid. Silakan coba lagi.',
       );
     }
   }
@@ -1224,9 +1406,14 @@ $transcriptBuffer
     required String word,
     String? currentMeaningId,
     String? wordTypeHint,
+    required List<String> knownPartsOfSpeech,
+    required FlashcardExampleGenerationMode mode,
     required bool includeAll16Tenses,
     required List<String> avoidSentences,
   }) {
+    final normalizedKnownPos = FlashcardPosHelper.normalizePartsOfSpeech(
+      knownPartsOfSpeech,
+    );
     final meaningHintLine =
         (currentMeaningId != null && currentMeaningId.trim().isNotEmpty)
         ? '- Known Indonesian meaning hint: "${currentMeaningId.trim()}"\n'
@@ -1235,16 +1422,39 @@ $transcriptBuffer
         (wordTypeHint != null && wordTypeHint.trim().isNotEmpty)
         ? '- Word type hint from user/card: "${wordTypeHint.trim()}"\n'
         : '';
+    final knownPosLine = normalizedKnownPos.isNotEmpty
+        ? '- Existing detected partsOfSpeech on card: ${jsonEncode(normalizedKnownPos)}\n'
+        : '';
 
-    final examplesRule = includeAll16Tenses
-        ? '''
-- Since "wordType" may be "verb" and full 16 tenses mode is enabled:
-  * If the word is "verb", generate EXACTLY 16 example sentences covering all 16 English tenses in order (Simple Present, Present Continuous, Present Perfect, Present Perfect Continuous, Simple Past, Past Continuous, Past Perfect, Past Perfect Continuous, Simple Future, Future Continuous, Future Perfect, Future Perfect Continuous, Simple Future Past, Future Past Continuous, Future Past Perfect, Future Past Perfect Continuous), setting "tense" to each exact tense name.
-  * If the word is strictly "non_verb" (e.g., noun, adjective, adverb, idiom), generate 5 to 6 natural contextual example sentences and label "tense" with a short context tag (such as "Daily Use", "Workplace", "Conversation", "Travel").'''
-        : '''
-- Sentence examples rule:
-  * If "wordType" is "verb", generate at least 5 natural, practical example sentences showcasing useful tense variety (label "tense" with the actual English tense name, e.g., "Simple Present", "Simple Past", "Present Perfect").
-  * If "wordType" is "non_verb", generate at least 5 everyday natural example sentences matching how the word or phrase is commonly used (label "tense" with a concise context tag like "Daily Use", "Conversation", "Business", NOT forced into 16 tenses).''';
+    final useVerb16Mode =
+        mode == FlashcardExampleGenerationMode.verb16TensesOnly ||
+        (mode == FlashcardExampleGenerationMode.standard && includeAll16Tenses);
+
+    final String examplesRule;
+    if (useVerb16Mode) {
+      examplesRule = '''
+- Mode: 16 Tenses (Verb ONLY) is ENABLED:
+  * Generate EXACTLY 16 example sentences covering all 16 English tenses in order (Simple Present, Present Continuous, Present Perfect, Present Perfect Continuous, Simple Past, Past Continuous, Past Perfect, Past Perfect Continuous, Simple Future, Future Continuous, Future Perfect, Future Perfect Continuous, Simple Future Past, Future Past Continuous, Future Past Perfect, Future Past Perfect Continuous), setting "tense" to each exact tense name.
+  * Every sentence MUST use "$word" specifically in its Verb (or Phrasal Verb) role, conjugated cleanly for each tense, and set "pos" to "Verb" (or "Phrasal Verb" if applicable) on every item. If "$word" is strictly non-verb only, use a natural predicate/verb alongside "$word".''';
+    } else if (mode == FlashcardExampleGenerationMode.nonVerbOnly) {
+      final nonVerbTargets = FlashcardPosHelper.nonVerbPosList(
+        normalizedKnownPos,
+      );
+      final targetSummary = nonVerbTargets.isNotEmpty
+          ? nonVerbTargets.join(', ')
+          : 'all non-verb parts of speech applicable to "$word"';
+      examplesRule = '''
+- Mode: Non-Verb POS examples ONLY:
+  * Generate EXACTLY 5 fresh natural everyday example sentences demonstrating ONLY the non-verb parts of speech ($targetSummary). Do NOT generate Verb usage sentences in this list.
+  * Distribute sentences evenly if there are multiple non-verb parts of speech.
+  * Set each item's "pos" strictly to the specific POS used in that sentence (e.g., "Noun", "Adjective", "Adverb", "Preposition") and "tense" to a concise context or tense tag (e.g., "Workplace", "Daily Use", "Simple Present").''';
+    } else {
+      examplesRule = '''
+- Mode: Standard POS detection & 5 contextual example sentences:
+  * Always generate EXACTLY 5 natural, practical everyday example sentences in "examples", each with "pos", "tense", "en", and "id":
+  * CASE A (Has non-verb POS, either pure non-verb like ["Adjective"] OR hybrid combining Verb + non-verb like ["Noun", "Verb"] or ["Noun", "Verb", "Adjective"]): generate all 5 sentences practicing ONLY those non-verb parts of speech (balanced evenly across every non-verb POS detected) so they fill the Non-Verb tab cleanly, setting "pos" to the exact non-verb POS demonstrated in that sentence (e.g. "Noun", "Adjective") and "tense" to a concise context/tense tag. (Verb 16-tenses sentences are generated separately.)
+  * CASE B (ONLY Verb/Phrasal Verb, e.g. ["Verb"] or ["Phrasal Verb"]): generate 5 natural example sentences using "$word" as a Verb across varied tenses, setting "pos" to "Verb" (or "Phrasal Verb") and "tense" to the tense name.''';
+    }
 
     final avoidSection = avoidSentences.isNotEmpty
         ? '''
@@ -1253,26 +1463,29 @@ ${avoidSentences.map((s) => '  * $s').join('\n')}'''
         : '';
 
     return '''
-You are an expert bilingual English-Indonesian vocabulary coach.
-Generate rich study content for the English target word or phrase: "$word"
-$meaningHintLine$typeHintLine
+You are an expert bilingual English-Indonesian lexicographer and vocabulary coach.
+Analyze and generate rich study content for the English target word or phrase: "$word"
+$meaningHintLine$typeHintLine$knownPosLine
 Requirements:
-1. Determine "wordType": return "verb" if the target word is commonly used as an English verb (or matches wordTypeHint "verb"), otherwise return "non_verb".
-2. Provide accurate IPA "phonetic" notation (e.g., "/ˈɑːr.tɪ.kjə.leɪt/").
-3. Provide a clear, concise Indonesian translation in "meaningId".
-4. Populate "examples" array where each item has "tense", "en" (natural English sentence using "$word"), and "id" (natural Indonesian translation):
+1. Determine "partsOfSpeech": detect ALL common, valid English parts of speech for "$word" as a Title Case JSON string array (unlimited combinations — e.g., ["Verb"], ["Adjective"], ["Phrasal Verb"], ["Noun", "Verb"], ["Noun", "Verb", "Adjective"], ["Noun", "Adjective", "Adverb"], etc.). Do NOT truncate or restrict the count.
+2. Determine "wordType": return "verb" if "partsOfSpeech" includes "Verb" or "Phrasal Verb", otherwise return "non_verb".
+3. Provide accurate IPA "phonetic" notation (e.g., "/ˈɑːr.tɪ.kjə.leɪt/").
+4. Provide a clear, concise Indonesian translation in "meaningId" covering the core meanings naturally.
+5. Populate "examples" array where each item has "pos" (specific Title Case POS used in that sentence), "tense", "en" (natural English sentence using "$word"), and "id" (natural Indonesian translation):
 $examplesRule
 $avoidSection
-5. Provide "conversation": a natural 2 to 4 line mini dialog between "A:" and "B:" in English using the target word/phrase naturally, followed directly below by a concise Indonesian translation section.
+6. Provide "conversation": a natural 2 to 4 line mini dialog between "A:" and "B:" in English using the target word/phrase naturally, followed directly below by a concise Indonesian translation section.
 
 Return ONLY strict JSON matching this schema (no markdown fences):
 {
+  "partsOfSpeech": ["Noun", "Verb"],
   "wordType": "verb",
   "phonetic": "/.../",
   "meaningId": "arti bahasa Indonesia",
   "examples": [
     {
-      "tense": "Simple Present",
+      "pos": "Noun",
+      "tense": "Workplace",
       "en": "English example sentence.",
       "id": "Terjemahan bahasa Indonesia."
     }
@@ -1288,8 +1501,14 @@ Return ONLY strict JSON matching this schema (no markdown fences):
   }) {
     final cardsBuffer = StringBuffer();
     for (final card in selectedCards) {
+      final posList = FlashcardPosHelper.decodePartsOfSpeech(
+        card.partsOfSpeechJson,
+      );
+      final posInfo = posList.isNotEmpty
+          ? ' | partsOfSpeech: ${posList.join(', ')}'
+          : '';
       cardsBuffer.writeln(
-        '- cardId: ${card.id} | word: "${card.word}" | meaningId: "${card.meaningId}" | wordType: ${card.wordType}',
+        '- cardId: ${card.id} | word: "${card.word}" | meaningId: "${card.meaningId}" | wordType: ${card.wordType}$posInfo',
       );
     }
 
@@ -1445,5 +1664,171 @@ Return ONLY strict JSON matching this schema (no markdown fences):
   ]
 }
 ''';
+  }
+
+  String _buildDailyVocabBatchPrompt({
+    required String cefrLevel,
+    required String topicName,
+    required int count,
+    required List<String> avoidWords,
+  }) {
+    final avoidSection = avoidWords.isNotEmpty
+        ? '''
+- Avoid repeating or slightly re-listing any of these words already present in this deck:
+  ${jsonEncode(avoidWords)}'''
+        : '';
+
+    return '''
+You are an expert English-Indonesian curriculum lexicographer building an everyday spoken English flashcard deck.
+Generate up to $count high-frequency English words or practical conversational expressions for:
+- CEFR Level: $cefrLevel
+- Topic: "$topicName"
+
+Requirements:
+1. Select natural, frequently spoken vocabulary used in everyday conversations at level $cefrLevel.
+2. Include varied parts of speech naturally suited to this topic ("Verb", "Noun", "Adjective", "Adverb", "Preposition", "Conjunction", "Pronoun", "Phrasal Verb") and accurately list multiple parts of speech when applicable (e.g. ["Noun", "Verb"] or ["Adjective", "Adverb"]).
+3. Keep each item lightweight with ONLY 4 fields:
+   - "word": English word or short natural conversational phrase
+   - "phonetic": accurate IPA notation (e.g. "/ˈskedʒ.uːl/")
+   - "meaningId": concise natural Indonesian meaning(s)
+   - "partsOfSpeech": Title Case JSON string array (e.g. ["Noun", "Verb"])
+4. Do NOT generate example sentences, tense tables, or dialogs.
+$avoidSection
+
+Return ONLY compact, strictly valid JSON (one line per item inside "items", no comments, no markdown fences, and no leading or trailing prose) matching this structure:
+{"items":[{"word":"schedule","phonetic":"/ˈskedʒ.uːl/","meaningId":"jadwal; menjadwalkan","partsOfSpeech":["Noun","Verb"]}]}
+''';
+  }
+
+  List<GeneratedVocabPackItem> _parseDailyVocabBatch({
+    required String rawText,
+    required Set<String> avoidSet,
+  }) {
+    final cleaned = SpeechInsightModel.stripMarkdownCodeFence(rawText);
+    final decoded = _tryDecodeVocabJson(cleaned);
+
+    final List<Map<String, dynamic>> rawMaps = <Map<String, dynamic>>[];
+    if (decoded is List) {
+      for (final entry in decoded) {
+        if (entry is Map) {
+          rawMaps.add(Map<String, dynamic>.from(entry));
+        }
+      }
+    } else if (decoded is Map) {
+      final candidate =
+          decoded['items'] ?? decoded['words'] ?? decoded['vocabulary'];
+      if (candidate is List) {
+        for (final entry in candidate) {
+          if (entry is Map) {
+            rawMaps.add(Map<String, dynamic>.from(entry));
+          }
+        }
+      }
+    }
+
+    if (rawMaps.isEmpty) {
+      rawMaps.addAll(_salvageVocabItemMaps(cleaned));
+    }
+
+    var parsedValidItemCount = 0;
+    final results = <GeneratedVocabPackItem>[];
+    final seenWords = <String>{};
+    for (final entry in rawMaps) {
+      final item = GeneratedVocabPackItem.fromJson(entry);
+      if (item.word.isEmpty) continue;
+      parsedValidItemCount += 1;
+      final key = item.word.toLowerCase();
+      if (avoidSet.contains(key) || !seenWords.add(key)) continue;
+      results.add(item);
+    }
+
+    if (parsedValidItemCount == 0) {
+      _logUnusableVocabBatchResponse(rawText);
+      throw const FormatException('No usable vocab items parsed from Gemini.');
+    }
+    if (results.isEmpty) {
+      return const <GeneratedVocabPackItem>[];
+    }
+    return List<GeneratedVocabPackItem>.unmodifiable(results);
+  }
+
+  dynamic _tryDecodeVocabJson(String cleaned) {
+    try {
+      return jsonDecode(cleaned);
+    } on FormatException {
+      final firstObj = cleaned.indexOf('{');
+      final lastObj = cleaned.lastIndexOf('}');
+      final firstArr = cleaned.indexOf('[');
+      final lastArr = cleaned.lastIndexOf(']');
+
+      final candidates = <({int start, int end})>[
+        if (firstObj != -1 && lastObj > firstObj)
+          (start: firstObj, end: lastObj),
+        if (firstArr != -1 && lastArr > firstArr)
+          (start: firstArr, end: lastArr),
+      ]..sort((a, b) => a.start.compareTo(b.start));
+
+      for (final c in candidates) {
+        try {
+          return jsonDecode(cleaned.substring(c.start, c.end + 1));
+        } on FormatException {
+          // Try next outer candidate or fall back to object-level salvage.
+        }
+      }
+      return null;
+    }
+  }
+
+  /// Extracts complete `{...}` item maps containing `"word"` from truncated
+  /// or prose-wrapped JSON payloads while respecting string escapes.
+  List<Map<String, dynamic>> _salvageVocabItemMaps(String text) {
+    final salvaged = <Map<String, dynamic>>[];
+    final objectStarts = <int>[];
+    var inString = false;
+    var escaped = false;
+
+    for (var i = 0; i < text.length; i++) {
+      final code = text.codeUnitAt(i);
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (code == 0x5C /* \ */) {
+          escaped = true;
+        } else if (code == 0x22 /* " */) {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (code == 0x22 /* " */) {
+        inString = true;
+      } else if (code == 0x7B /* { */) {
+        objectStarts.add(i);
+      } else if (code == 0x7D /* } */ && objectStarts.isNotEmpty) {
+        final start = objectStarts.removeLast();
+        final slice = text.substring(start, i + 1);
+        if (!slice.contains('"word"')) continue;
+        try {
+          final parsed = jsonDecode(slice);
+          if (parsed is Map && parsed.containsKey('word')) {
+            salvaged.add(Map<String, dynamic>.from(parsed));
+          }
+        } on FormatException {
+          // Skip malformed fragment and continue scanning earlier/later items.
+        }
+      }
+    }
+    return salvaged;
+  }
+
+  void _logUnusableVocabBatchResponse(String rawText) {
+    final trimmed = rawText.trim();
+    final len = trimmed.length;
+    final head = len <= 200 ? trimmed : trimmed.substring(0, 200);
+    final tail = len <= 200 ? trimmed : trimmed.substring(len - 200);
+    debugPrint(
+      'DailyVocabBatch parse failed (length=$len). '
+      'Head(200): $head | Tail(200): $tail',
+    );
   }
 }
