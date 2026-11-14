@@ -13,6 +13,8 @@ class PracticeArgs {
     required this.mode,
     this.targetDurationSec = GeminiConstants.defaultTargetDurationSec,
     this.customTopic,
+    this.targetVocabulary = const <String>[],
+    this.vocabSubDeckTitle,
   });
 
   /// `'lesson'`, `'placement'`, or `'free_talk'`.
@@ -27,6 +29,10 @@ class PracticeArgs {
   final String mode;
   final int targetDurationSec;
   final String? customTopic;
+  final List<String> targetVocabulary;
+  final String? vocabSubDeckTitle;
+
+  bool get hasTargetVocabulary => targetVocabulary.isNotEmpty;
 
   /// Whether this session captures WAV audio and tracks a timed speech goal.
   bool get isTimedSpeechMode =>

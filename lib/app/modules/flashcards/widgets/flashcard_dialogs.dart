@@ -130,21 +130,23 @@ Future<bool> showFlashcardConfirmDeleteDialog({
   return result == true;
 }
 
-/// Supported actions inside the 4-option bottom sheet on Deck and Sub-Deck cards.
+/// Supported actions inside the bottom sheet on Deck and Sub-Deck cards.
 enum FlashcardEntityAction {
   open,
   quiz,
+  freeTalk,
   rename,
   delete,
 }
 
-/// Opens a shared 4-action ModalBottomSheet for either a Deck or a Sub-Deck.
+/// Opens a shared ModalBottomSheet for either a Deck or a Sub-Deck.
 Future<FlashcardEntityAction?> showFlashcardEntityActionsSheet({
   required BuildContext context,
   required String title,
   required String subtitle,
   required String openLabel,
   required IconData openIcon,
+  bool showFreeTalkAction = false,
 }) {
   return showModalBottomSheet<FlashcardEntityAction>(
     context: context,
@@ -157,55 +159,70 @@ Future<FlashcardEntityAction?> showFlashcardEntityActionsSheet({
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                title,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                leading: Icon(openIcon, color: colorScheme.primary),
-                title: Text(openLabel),
-                onTap: () => Navigator.of(sheetContext)
-                    .pop(FlashcardEntityAction.open),
-              ),
-              ListTile(
-                leading: Icon(Icons.bolt_rounded, color: colorScheme.tertiary),
-                title: const Text('Mulai Tes'),
-                onTap: () => Navigator.of(sheetContext)
-                    .pop(FlashcardEntityAction.quiz),
-              ),
-              ListTile(
-                leading: Icon(Icons.edit_outlined, color: colorScheme.secondary),
-                title: const Text('Ganti Nama'),
-                onTap: () => Navigator.of(sheetContext)
-                    .pop(FlashcardEntityAction.rename),
-              ),
-              ListTile(
-                leading: Icon(Icons.delete_outline_rounded, color: colorScheme.error),
-                title: Text(
-                  'Hapus',
-                  style: TextStyle(
-                    color: colorScheme.error,
-                    fontWeight: FontWeight.w600,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                onTap: () => Navigator.of(sheetContext)
-                    .pop(FlashcardEntityAction.delete),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: Icon(openIcon, color: colorScheme.primary),
+                  title: Text(openLabel),
+                  onTap: () => Navigator.of(sheetContext)
+                      .pop(FlashcardEntityAction.open),
+                ),
+                ListTile(
+                  leading: Icon(Icons.bolt_rounded, color: colorScheme.tertiary),
+                  title: const Text('Mulai Tes'),
+                  onTap: () => Navigator.of(sheetContext)
+                      .pop(FlashcardEntityAction.quiz),
+                ),
+                if (showFreeTalkAction)
+                  ListTile(
+                    leading: Icon(
+                      Icons.record_voice_over_rounded,
+                      color: colorScheme.primary,
+                    ),
+                    title: const Text('Free Talk dengan AI'),
+                    subtitle: const Text(
+                      'Latih kata sub-deck ini dalam percakapan live (maks. 10 kata)',
+                    ),
+                    onTap: () => Navigator.of(sheetContext)
+                        .pop(FlashcardEntityAction.freeTalk),
+                  ),
+                ListTile(
+                  leading: Icon(Icons.edit_outlined, color: colorScheme.secondary),
+                  title: const Text('Ganti Nama'),
+                  onTap: () => Navigator.of(sheetContext)
+                      .pop(FlashcardEntityAction.rename),
+                ),
+                ListTile(
+                  leading: Icon(Icons.delete_outline_rounded, color: colorScheme.error),
+                  title: Text(
+                    'Hapus',
+                    style: TextStyle(
+                      color: colorScheme.error,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  onTap: () => Navigator.of(sheetContext)
+                      .pop(FlashcardEntityAction.delete),
+                ),
+              ],
+            ),
           ),
         ),
       );

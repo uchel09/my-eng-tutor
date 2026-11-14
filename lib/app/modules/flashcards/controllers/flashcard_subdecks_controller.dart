@@ -8,6 +8,7 @@ import '../../../data/repositories/tutor_repository.dart';
 import '../../../routes/app_pages.dart';
 import '../models/flashcard_nav_args.dart';
 import '../widgets/flashcard_dialogs.dart';
+import '../widgets/flashcard_freetalk_sheet.dart';
 
 /// Level 2 controller managing Sub-Decks within a parent [FlashcardDeck].
 class FlashcardSubDecksController extends GetxController {
@@ -147,6 +148,12 @@ class FlashcardSubDecksController extends GetxController {
         subDeckId: subDeck.id,
       ),
     );
+  }
+
+  /// Launches a vocabulary-guided Free Talk Live session for [selection].
+  void startSubDeckFreeTalk(FlashcardSubDeckFreeTalkSelection selection) {
+    final practiceArgs = buildSubDeckFreeTalkPracticeArgs(selection);
+    Get.toNamed<void>(Routes.PRACTICE, arguments: practiceArgs);
   }
 
   @override

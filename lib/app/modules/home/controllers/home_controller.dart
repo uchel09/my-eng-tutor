@@ -8,6 +8,7 @@ import '../../../data/local/daos/roadmap_dao.dart';
 import '../../../data/models/practice_args.dart';
 import '../../../data/repositories/tutor_repository.dart';
 import '../../../routes/app_pages.dart';
+import '../../flashcards/widgets/flashcard_freetalk_sheet.dart';
 
 /// Controller for the 5-tab home shell, daily streak, progress summary, and quick launches.
 class HomeController extends GetxController {
@@ -155,11 +156,31 @@ class HomeController extends GetxController {
   }
 
   Future<void> startFreeTalk() async {
-    final chosenTopic = await Get.dialog<String>(
-      const _FreeTalkTopicDialog(),
+    final result = await Get.dialog<_HomeFreeTalkResult>(
+      _FreeTalkTopicDialog(
+        repository: repository,
+        fallbackCefr: activeCefrCode,
+      ),
     );
 
-    if (chosenTopic == null || chosenTopic.trim().isEmpty) return;
+    if (result == null) return;
+    if (result.openFlashcardsTab) {
+      changeTab(2);
+      return;
+    }
+
+    final vocabSelection = result.vocabSelection;
+    if (vocabSelection != null) {
+      final practiceArgs = buildSubDeckFreeTalkPracticeArgs(
+        vocabSelection,
+        fallbackCefr: activeCefrCode,
+      );
+      Get.toNamed<void>(Routes.PRACTICE, arguments: practiceArgs);
+      return;
+    }
+
+    final chosenTopic = result.freeTopic?.trim() ?? '';
+    if (chosenTopic.isEmpty) return;
 
     Get.toNamed<void>(
       Routes.PRACTICE,
@@ -184,8 +205,26 @@ class HomeController extends GetxController {
   }
 }
 
+class _HomeFreeTalkResult {
+  const _HomeFreeTalkResult({
+    this.freeTopic,
+    this.vocabSelection,
+    this.openFlashcardsTab = false,
+  });
+
+  final String? freeTopic;
+  final FlashcardSubDeckFreeTalkSelection? vocabSelection;
+  final bool openFlashcardsTab;
+}
+
 class _FreeTalkTopicDialog extends StatefulWidget {
-  const _FreeTalkTopicDialog();
+  const _FreeTalkTopicDialog({
+    required this.repository,
+    required this.fallbackCefr,
+  });
+
+  final TutorRepository repository;
+  final String fallbackCefr;
 
   @override
   State<_FreeTalkTopicDialog> createState() => _FreeTalkTopicDialogState();
@@ -202,6 +241,8 @@ class _FreeTalkTopicDialogState extends State<_FreeTalkTopicDialog> {
 
   final TextEditingController _customController = TextEditingController();
   String _selectedTopic = _quickTopics.first;
+  bool _useVocabMode = false;
+  FlashcardSubDeckFreeTalkSelection? _vocabSelection;
 
   @override
   void dispose() {
@@ -211,41 +252,86 @@ class _FreeTalkTopicDialogState extends State<_FreeTalkTopicDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final canStart = !_useVocabMode || _vocabSelection != null;
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       title: const Text('Pilih Topik Free Talk'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _quickTopics.map((topic) {
-                final isSelected = _selectedTopic == topic &&
-                    _customController.text.trim().isEmpty;
-                return ChoiceChip(
-                  label: Text(topic),
-                  selected: isSelected,
-                  onSelected: (_) {
-                    setState(() {
-                      _selectedTopic = topic;
-                      _customController.clear();
-                    });
-                  },
-                );
-              }).toList(growable: false),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _customController,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Atau ketik topik bebas',
-                hintText: 'Misal: Favorite movies, Startup ideas...',
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment<bool>(
+                    value: false,
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('Talk Bebas'),
+                    ),
+                  ),
+                  ButtonSegment<bool>(
+                    value: true,
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('Kosakata Sub-Deck'),
+                    ),
+                  ),
+                ],
+                selected: <bool>{_useVocabMode},
+                onSelectionChanged: (selection) {
+                  if (selection.isEmpty) return;
+                  setState(() => _useVocabMode = selection.first);
+                },
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              if (!_useVocabMode) ...[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _quickTopics.map((topic) {
+                    final isSelected = _selectedTopic == topic &&
+                        _customController.text.trim().isEmpty;
+                    return ChoiceChip(
+                      label: Text(topic),
+                      selected: isSelected,
+                      onSelected: (_) {
+                        setState(() {
+                          _selectedTopic = topic;
+                          _customController.clear();
+                        });
+                      },
+                    );
+                  }).toList(growable: false),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _customController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Atau ketik topik bebas',
+                    hintText: 'Misal: Favorite movies, Startup ideas...',
+                  ),
+                ),
+              ] else
+                FlashcardSubDeckFreeTalkSelector(
+                  repository: widget.repository,
+                  fallbackCefr: widget.fallbackCefr,
+                  showSubmitActions: false,
+                  onSelectionChanged: (selection) {
+                    if (!mounted) return;
+                    setState(() => _vocabSelection = selection);
+                  },
+                  onOpenFlashcardsTab: () {
+                    Navigator.of(context).pop(
+                      const _HomeFreeTalkResult(openFlashcardsTab: true),
+                    );
+                  },
+                ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -254,13 +340,23 @@ class _FreeTalkTopicDialogState extends State<_FreeTalkTopicDialog> {
           child: const Text('Batal'),
         ),
         FilledButton(
-          onPressed: () {
-            final custom = _customController.text.trim();
-            Navigator.of(context).pop(
-              custom.isNotEmpty ? custom : _selectedTopic,
-            );
-          },
-          child: const Text('Mulai Ngobrol'),
+          onPressed: !canStart
+              ? null
+              : () {
+                  if (_useVocabMode) {
+                    Navigator.of(context).pop(
+                      _HomeFreeTalkResult(vocabSelection: _vocabSelection),
+                    );
+                    return;
+                  }
+                  final custom = _customController.text.trim();
+                  Navigator.of(context).pop(
+                    _HomeFreeTalkResult(
+                      freeTopic: custom.isNotEmpty ? custom : _selectedTopic,
+                    ),
+                  );
+                },
+          child: Text(_useVocabMode ? 'Mulai Free Talk' : 'Mulai Ngobrol'),
         ),
       ],
     );

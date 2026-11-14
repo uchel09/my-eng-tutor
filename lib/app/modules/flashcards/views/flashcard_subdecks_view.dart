@@ -5,6 +5,7 @@ import '../../../core/widgets/app_state_widgets.dart';
 import '../../../data/local/daos/flashcard_dao.dart';
 import '../controllers/flashcard_subdecks_controller.dart';
 import '../widgets/flashcard_dialogs.dart';
+import '../widgets/flashcard_freetalk_sheet.dart';
 import '../widgets/flashcard_progress_circle.dart';
 
 class FlashcardSubDecksView extends GetView<FlashcardSubDecksController> {
@@ -34,6 +35,7 @@ class FlashcardSubDecksView extends GetView<FlashcardSubDecksController> {
       subtitle: '${stats.cardCount} Kata di ${controller.deckTitle}',
       openLabel: 'Buka Sub-Deck',
       openIcon: Icons.style_outlined,
+      showFreeTalkAction: true,
     );
     if (action == null || !context.mounted) return;
 
@@ -42,6 +44,24 @@ class FlashcardSubDecksView extends GetView<FlashcardSubDecksController> {
         controller.openSubDeck(subDeck);
       case FlashcardEntityAction.quiz:
         await controller.startSubDeckQuiz(subDeck);
+      case FlashcardEntityAction.freeTalk:
+        if (stats.cardCount == 0) {
+          showFlashcardSnackbar(
+            title: 'Sub-Deck Kosong',
+            message: "Belum ada kata di sub-deck '${subDeck.name}'.",
+            isError: true,
+          );
+          return;
+        }
+        final selection = await showFlashcardSubDeckFreeTalkSheet(
+          context: context,
+          repository: controller.repository,
+          fixedSubDeck: subDeck,
+          fixedDeckName: controller.deckTitle,
+        );
+        if (selection != null) {
+          controller.startSubDeckFreeTalk(selection);
+        }
       case FlashcardEntityAction.rename:
         final input = await showFlashcardNamedInputDialog(
           context: context,

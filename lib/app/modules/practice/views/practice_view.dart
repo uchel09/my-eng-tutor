@@ -225,6 +225,11 @@ class _ScenarioPromptCard extends StatelessWidget {
       ),
       child: Obx(() {
         final expanded = controller.isPromptExpanded.value;
+        final totalVocab = args.targetVocabulary.length;
+        final practicedVocab = args.hasTargetVocabulary
+            ? controller.practicedTargetWordsCount
+            : 0;
+        final isDark = theme.brightness == Brightness.dark;
         return InkWell(
           onTap: controller.togglePromptExpanded,
           borderRadius: BorderRadius.circular(14),
@@ -244,12 +249,40 @@ class _ScenarioPromptCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         'Skenario Latihan',
+                        overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.labelLarge?.copyWith(
                           color: colorScheme.primary,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
+                    if (args.hasTargetVocabulary) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: practicedVocab == totalVocab
+                              ? Colors.green.shade600.withValues(alpha: 0.16)
+                              : colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '$practicedVocab/$totalVocab kata',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: practicedVocab == totalVocab
+                                ? (isDark
+                                      ? Colors.green.shade300
+                                      : Colors.green.shade700)
+                                : colorScheme.onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(width: 4),
                     Icon(
                       expanded
                           ? Icons.keyboard_arrow_up_rounded
@@ -261,7 +294,7 @@ class _ScenarioPromptCard extends StatelessWidget {
                 if (expanded) ...[
                   const SizedBox(height: 6),
                   ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 112),
+                    constraints: const BoxConstraints(maxHeight: 96),
                     child: SingleChildScrollView(
                       child: Text(
                         args.scenarioPrompt,
@@ -272,6 +305,84 @@ class _ScenarioPromptCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (args.hasTargetVocabulary) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Target Kosakata ($practicedVocab/$totalVocab terpakai):',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 112),
+                      child: SingleChildScrollView(
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: args.targetVocabulary.map((word) {
+                            final isPracticed =
+                                controller.isTargetWordPracticed(word);
+                            final practicedColor = isDark
+                                ? Colors.green.shade300
+                                : Colors.green.shade700;
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isPracticed
+                                    ? Colors.green.shade600.withValues(
+                                        alpha: 0.16,
+                                      )
+                                    : colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: isPracticed
+                                      ? Colors.green.shade600.withValues(
+                                          alpha: 0.7,
+                                        )
+                                      : colorScheme.outlineVariant.withValues(
+                                          alpha: 0.6,
+                                        ),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (isPracticed) ...[
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      size: 14,
+                                      color: practicedColor,
+                                    ),
+                                    const SizedBox(width: 4),
+                                  ],
+                                  Flexible(
+                                    child: Text(
+                                      word,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(
+                                            fontWeight: isPracticed
+                                                ? FontWeight.w700
+                                                : FontWeight.w500,
+                                            color: isPracticed
+                                                ? practicedColor
+                                                : colorScheme.onSurface,
+                                          ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(growable: false),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ],
             ),

@@ -50,6 +50,8 @@ class FlashcardsView extends GetView<FlashcardsController> {
         controller.openDeck(deck);
       case FlashcardEntityAction.quiz:
         await controller.startDeckQuiz(deck);
+      case FlashcardEntityAction.freeTalk:
+        break;
       case FlashcardEntityAction.rename:
         final input = await showFlashcardNamedInputDialog(
           context: context,

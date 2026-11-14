@@ -9,8 +9,10 @@ import '../../../data/providers/gemini_rest_provider.dart';
 import '../../../data/repositories/tutor_repository.dart';
 import '../../../data/services/audio_service.dart';
 import '../../../data/services/tts_service.dart';
+import '../../../routes/app_pages.dart';
 import '../models/flashcard_nav_args.dart';
 import '../widgets/flashcard_dialogs.dart';
+import '../widgets/flashcard_freetalk_sheet.dart';
 
 /// Level 3 controller managing interactive Flashcards, TTS pronunciation, and AI study content.
 class FlashcardStudyController extends GetxController {
@@ -1032,6 +1034,12 @@ class FlashcardStudyController extends GetxController {
     } finally {
       isSavingDraft.value = false;
     }
+  }
+
+  /// Launches a vocabulary-guided Free Talk Live session for [selection].
+  void startSubDeckFreeTalk(FlashcardSubDeckFreeTalkSelection selection) {
+    final practiceArgs = buildSubDeckFreeTalkPracticeArgs(selection);
+    Get.toNamed<void>(Routes.PRACTICE, arguments: practiceArgs);
   }
 
   @override

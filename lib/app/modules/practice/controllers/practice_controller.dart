@@ -19,11 +19,13 @@ class PracticeController extends GetxController {
     required this.liveProvider,
     required this.audioService,
     required this.repository,
-  });
+    PracticeArgs? initialArgs,
+  }) : _initialArgs = initialArgs;
 
   final GeminiLiveProvider liveProvider;
   final AudioService audioService;
   final TutorRepository repository;
+  final PracticeArgs? _initialArgs;
 
   late final PracticeArgs? args;
 
@@ -72,8 +74,14 @@ class PracticeController extends GetxController {
   void onInit() {
     super.onInit();
     final rawArgs = Get.arguments;
-    args = rawArgs is PracticeArgs ? rawArgs : null;
+    args = _initialArgs ?? (rawArgs is PracticeArgs ? rawArgs : null);
     unawaited(startSession());
+  }
+
+  /// Initializes [args] without starting a network Live session (for widget/unit tests).
+  @visibleForTesting
+  void setArgsForTest(PracticeArgs testArgs) {
+    args = testArgs;
   }
 
   /// Connects to Gemini Live, initializes Android audio streams, and begins the session.
@@ -391,6 +399,26 @@ class PracticeController extends GetxController {
         ? 'Topic: ${currentArgs.customTopic}'
         : '';
 
+    final targetWords = currentArgs.targetVocabulary
+        .map((w) => w.trim())
+        .where((w) => w.isNotEmpty)
+        .take(10)
+        .toList(growable: false);
+    final subDeckHeader =
+        currentArgs.vocabSubDeckTitle != null &&
+            currentArgs.vocabSubDeckTitle!.trim().isNotEmpty
+        ? ' (Sub-Deck: ${currentArgs.vocabSubDeckTitle!.trim()})'
+        : '';
+    final targetVocabBlock = targetWords.isEmpty
+        ? ''
+        : '''
+Target Vocabulary Practice$subDeckHeader:
+Target Words (max 10): ${targetWords.join(', ')}
+Vocabulary Practice Instructions:
+- Lead a natural two-way conversation matching the context/topic above.
+- Gradually encourage and prompt the learner to use these target words naturally (1–2 target words per turn; do NOT push all words at once).
+- If the learner seems to forget or hesitate on a target word, give a brief explanation of its meaning and 1 short example sentence, then invite them to try using it.''';
+
     return '''
 You are a warm, encouraging personal English speaking tutor (similar to Stimuler).
 Target CEFR Level: $cefr
@@ -399,10 +427,58 @@ Title: ${currentArgs.title}
 Scenario Prompt: ${currentArgs.scenarioPrompt}
 $topicLine
 $lessonInstruction
+$targetVocabBlock
 
 $languageGuide
 $modeGuide
 ''';
+  }
+
+  /// Builds the Gemini Live system instruction for deterministic unit testing.
+  @visibleForTesting
+  String buildSystemInstructionForTest(
+    PracticeArgs currentArgs,
+    AppSetting settings,
+  ) => _buildSystemInstruction(currentArgs, settings);
+
+  /// Returns `true` when any user turn in [transcriptTurns] uses [targetWord]
+  /// as a complete word or phrase (case-insensitive, safe word boundaries).
+  bool isTargetWordPracticed(String targetWord) {
+    final normalized = targetWord.trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+
+    final tokens = normalized
+        .split(RegExp(r'\s+'))
+        .where((t) => t.isNotEmpty)
+        .map(RegExp.escape)
+        .toList(growable: false);
+    if (tokens.isEmpty) return false;
+
+    final phrasePattern = tokens.join(r'\s+');
+    final pattern = RegExp(
+      r'(?<![a-z0-9])' + phrasePattern + r'(?![a-z0-9])',
+      caseSensitive: false,
+    );
+
+    for (final turn in transcriptTurns) {
+      if (turn.role != 'user') continue;
+      if (pattern.hasMatch(turn.text)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Number of target vocabulary words already used by the user in [transcriptTurns].
+  int get practicedTargetWordsCount {
+    final targets = args?.targetVocabulary ?? const <String>[];
+    var count = 0;
+    for (final word in targets) {
+      if (isTargetWordPracticed(word)) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /// Toggles manual recording: standby -> record -> stop & send audioStreamEnd.

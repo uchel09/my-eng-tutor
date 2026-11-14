@@ -8,6 +8,7 @@ import '../../../data/local/app_database.dart';
 import '../../../data/local/daos/flashcard_dao.dart';
 import '../controllers/flashcard_study_controller.dart';
 import '../widgets/flashcard_dialogs.dart';
+import '../widgets/flashcard_freetalk_sheet.dart';
 import '../widgets/flashcard_progress_circle.dart';
 import '../widgets/sentence_pronunciation_sheet.dart';
 
@@ -54,6 +55,28 @@ class FlashcardStudyView extends GetView<FlashcardStudyController> {
     }
   }
 
+  Future<void> _openFreeTalkSheet(BuildContext context) async {
+    final subDeck = controller.subDeck;
+    if (subDeck == null) return;
+    if (controller.cards.isEmpty) {
+      showFlashcardSnackbar(
+        title: 'Sub-Deck Kosong',
+        message: "Tambahkan kata terlebih dahulu sebelum memulai Free Talk.",
+        isError: true,
+      );
+      return;
+    }
+    final selection = await showFlashcardSubDeckFreeTalkSheet(
+      context: context,
+      repository: controller.repository,
+      fixedSubDeck: subDeck,
+      fixedDeckName: controller.deckName,
+    );
+    if (selection != null) {
+      controller.startSubDeckFreeTalk(selection);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -72,15 +95,25 @@ class FlashcardStudyView extends GetView<FlashcardStudyController> {
           ],
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: TextButton.icon(
-              onPressed: controller.subDeck == null
+          Obx(
+            () => TextButton.icon(
+              onPressed: controller.subDeck == null || controller.cards.isEmpty
                   ? null
-                  : () => _openAddWordDialog(context),
-              icon: const Icon(Icons.add_rounded, size: 20),
-              label: const Text('Kata'),
+                  : () => _openFreeTalkSheet(context),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: const Icon(Icons.record_voice_over_rounded, size: 18),
+              label: const Text('Free Talk'),
             ),
+          ),
+          IconButton(
+            tooltip: 'Tambah Kata',
+            onPressed: controller.subDeck == null
+                ? null
+                : () => _openAddWordDialog(context),
+            icon: const Icon(Icons.add_rounded),
           ),
         ],
       ),
